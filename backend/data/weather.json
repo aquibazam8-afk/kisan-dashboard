@@ -1,0 +1,13 @@
+{
+  "location": {"en": "Ranchi, Jharkhand", "hi": "रांची, झारखंड"},
+  "updated": "sample-data",
+  "days": [
+    {"day": {"en": "Sat", "hi": "शनि"}, "tmax": 31, "tmin": 24, "rain_mm": 2,  "cond": {"en": "Partly cloudy", "hi": "आंशिक बादल"}},
+    {"day": {"en": "Sun", "hi": "रवि"}, "tmax": 30, "tmin": 24, "rain_mm": 12, "cond": {"en": "Light rain", "hi": "हल्की बारिश"}},
+    {"day": {"en": "Mon", "hi": "सोम"}, "tmax": 29, "tmin": 23, "rain_mm": 24, "cond": {"en": "Rain", "hi": "बारिश"}},
+    {"day": {"en": "Tue", "hi": "मंगल"}, "tmax": 30, "tmin": 23, "rain_mm": 8, "cond": {"en": "Showers", "hi": "बौछारें"}},
+    {"day": {"en": "Wed", "hi": "बुध"}, "tmax": 32, "tmin": 24, "rain_mm": 0,  "cond": {"en": "Sunny", "hi": "धूप"}},
+    {"day": {"en": "Thu", "hi": "गुरु"}, "tmax": 33, "tmin": 25, "rain_mm": 0, "cond": {"en": "Sunny", "hi": "धूप"}},
+    {"day": {"en": "Fri", "hi": "शुक्र"}, "tmax": 31, "tmin": 24, "rain_mm": 6, "cond": {"en": "Cloudy", "hi": "बादल"}}
+  ]
+}
