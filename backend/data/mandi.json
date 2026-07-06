@@ -1,0 +1,37 @@
+{
+  "paddy": [
+    {"mandi": {"en": "Ranchi (Pandra)", "hi": "रांची (पंडरा)"}, "price": 2180, "unit": "quintal", "trend": "up"},
+    {"mandi": {"en": "Ramgarh", "hi": "रामगढ़"}, "price": 2150, "unit": "quintal", "trend": "flat"},
+    {"mandi": {"en": "Khunti", "hi": "खूंटी"}, "price": 2120, "unit": "quintal", "trend": "down"}
+  ],
+  "maize": [
+    {"mandi": {"en": "Ranchi (Pandra)", "hi": "रांची (पंडरा)"}, "price": 2050, "unit": "quintal", "trend": "up"},
+    {"mandi": {"en": "Lohardaga", "hi": "लोहरदगा"}, "price": 1990, "unit": "quintal", "trend": "up"},
+    {"mandi": {"en": "Gumla", "hi": "गुमला"}, "price": 1960, "unit": "quintal", "trend": "flat"}
+  ],
+  "arhar": [
+    {"mandi": {"en": "Ranchi (Pandra)", "hi": "रांची (पंडरा)"}, "price": 7200, "unit": "quintal", "trend": "up"},
+    {"mandi": {"en": "Khunti", "hi": "खूंटी"}, "price": 7050, "unit": "quintal", "trend": "flat"}
+  ],
+  "veg": [
+    {"mandi": {"en": "Ranchi (Pandra)", "hi": "रांची (पंडरा)"}, "price": 1400, "unit": "quintal", "trend": "down"},
+    {"mandi": {"en": "Ramgarh", "hi": "रामगढ़"}, "price": 1350, "unit": "quintal", "trend": "down"}
+  ],
+  "tomato": [
+    {"mandi": {"en": "Ranchi (Pandra)", "hi": "रांची (पंडरा)"}, "price": 1550, "unit": "quintal", "trend": "up"},
+    {"mandi": {"en": "Namkum",          "hi": "नामकुम"},          "price": 1480, "unit": "quintal", "trend": "up"},
+    {"mandi": {"en": "Khunti",          "hi": "खूंटी"},           "price": 1400, "unit": "quintal", "trend": "flat"}
+  ],
+  "potato": [
+    {"mandi": {"en": "Ranchi (Pandra)", "hi": "रांची (पंडरा)"}, "price": 1150, "unit": "quintal", "trend": "flat"},
+    {"mandi": {"en": "Ramgarh",         "hi": "रामगढ़"},          "price": 1080, "unit": "quintal", "trend": "down"}
+  ],
+  "onion": [
+    {"mandi": {"en": "Ranchi (Pandra)", "hi": "रांची (पंडरा)"}, "price": 1900, "unit": "quintal", "trend": "up"},
+    {"mandi": {"en": "Lohardaga",       "hi": "लोहरदगा"},         "price": 1820, "unit": "quintal", "trend": "up"}
+  ],
+  "cauliflower": [
+    {"mandi": {"en": "Ranchi (Pandra)", "hi": "रांची (पंडरा)"}, "price": 1050, "unit": "quintal", "trend": "down"},
+    {"mandi": {"en": "Namkum",          "hi": "नामकुम"},          "price":  980, "unit": "quintal", "trend": "flat"}
+  ]
+}
