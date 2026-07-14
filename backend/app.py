@@ -9,9 +9,12 @@ Model: copy trained_plant_disease_model.keras into this backend/ folder,
 import io
 import json
 import os
+import time
 from pathlib import Path
 
 import numpy as np
+import requests
+from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
@@ -20,10 +23,32 @@ from disease_info import DISEASE_INFO, CLASS_NAMES
 
 # --- Config ----------------------------------------------------------------
 BASE = Path(__file__).parent
+load_dotenv(BASE / ".env")
+
 # Default: model sits next to this file. Change if you keep it in the repo.
 MODEL_PATH = os.environ.get("MODEL_PATH", str(BASE / "trained_plant_disease_model.keras"))
 DATA_DIR = BASE / "data"
 IMG_SIZE = (128, 128)  # must match the model's training input
+
+# Live mandi prices (data.gov.in Agmarknet resource). Only read from the env —
+# never hardcode the key. Absent key means the /mandi endpoint stays on the
+# bundled sample data.
+DATAGOV_API_KEY = os.environ.get("DATAGOV_API_KEY") or None
+AGMARKNET_URL = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
+MANDI_CACHE_TTL = 3600  # seconds
+
+# crop key (as used by data/mandi.json and the frontend) -> commodity name
+# tokens to match against the Agmarknet "commodity" field.
+CROP_COMMODITIES = {
+    "paddy": ["Paddy", "Dhan"],
+    "maize": ["Maize"],
+    "arhar": ["Arhar", "Tur"],
+    "tomato": ["Tomato"],
+    "potato": ["Potato"],
+    "onion": ["Onion"],
+    "cauliflower": ["Cauliflower"],
+    "veg": ["Vegetables"],
+}
 
 app = FastAPI(title="Kisan Dashboard API", version="0.1")
 
@@ -54,6 +79,102 @@ def _load_json(name):
         return json.load(f)
 
 
+# --- Live mandi prices -------------------------------------------------------
+_MANDI_HI = {
+    entry["mandi"]["en"]: entry["mandi"]["hi"]
+    for entries in _load_json("mandi.json").values()
+    for entry in entries
+}
+
+_mandi_cache = {"records": None, "fetched_at": 0.0}
+
+
+def _bilingual_mandi_name(market, district):
+    """Bilingual mandi name, reusing known Hindi names where we have them."""
+    name = (market or district or "Unknown").strip()
+    return {"en": name, "hi": _MANDI_HI.get(name, name)}
+
+
+def _trend_from_range(modal, low, high):
+    """Trend from where modal_price sits between min_price and max_price."""
+    if low is None or high is None or high == low:
+        return "flat"
+    dist_to_high = high - modal
+    dist_to_low = modal - low
+    if dist_to_high < dist_to_low:
+        return "up"
+    if dist_to_low < dist_to_high:
+        return "down"
+    return "flat"
+
+
+def _fetch_agmarknet_records():
+    """Jharkhand mandi records from data.gov.in, cached for MANDI_CACHE_TTL."""
+    now = time.time()
+    if _mandi_cache["records"] is not None and (now - _mandi_cache["fetched_at"]) < MANDI_CACHE_TTL:
+        return _mandi_cache["records"]
+
+    resp = requests.get(
+        AGMARKNET_URL,
+        params={
+            "api-key": DATAGOV_API_KEY,
+            "format": "json",
+            "limit": 100,
+            "filters[state.keyword]": "Jharkhand",
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
+    records = resp.json().get("records", [])
+    _mandi_cache["records"] = records
+    _mandi_cache["fetched_at"] = now
+    return records
+
+
+def _live_mandi_data():
+    """mandi.json-shaped dict built from live Agmarknet records.
+
+    Falls back to the bundled sample data per-crop when live coverage is
+    missing, and for the whole dataset if the fetch fails or times out, so
+    the app never breaks.
+    """
+    fallback = _load_json("mandi.json")
+    try:
+        records = _fetch_agmarknet_records()
+    except Exception:
+        return fallback
+
+    if not records:
+        return fallback
+
+    result = {}
+    for crop, tokens in CROP_COMMODITIES.items():
+        matches = [
+            r for r in records
+            if any(tok.lower() in (r.get("commodity") or "").lower() for tok in tokens)
+        ]
+        entries = []
+        for r in matches[:5]:
+            try:
+                modal = float(r["modal_price"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            low = high = None
+            try:
+                low = float(r.get("min_price"))
+                high = float(r.get("max_price"))
+            except (TypeError, ValueError):
+                pass
+            entries.append({
+                "mandi": _bilingual_mandi_name(r.get("market"), r.get("district")),
+                "price": modal,
+                "unit": "quintal",
+                "trend": _trend_from_range(modal, low, high),
+            })
+        result[crop] = entries or fallback.get(crop, [])
+    return result
+
+
 # --- Endpoints -------------------------------------------------------------
 @app.get("/health")
 def health():
@@ -68,8 +189,12 @@ def weather():
 
 @app.get("/mandi")
 def mandi(crop: str | None = None):
-    """Mandi prices for Ranchi + nearby markets. Optional ?crop=maize filter."""
-    data = _load_json("mandi.json")
+    """Mandi prices for Ranchi + nearby markets. Optional ?crop=maize filter.
+
+    Uses live Agmarknet (data.gov.in) prices when DATAGOV_API_KEY is set,
+    falling back to the bundled sample data otherwise or on any failure.
+    """
+    data = _live_mandi_data() if DATAGOV_API_KEY else _load_json("mandi.json")
     if crop:
         return {"crop": crop, "prices": data.get(crop, [])}
     return data
