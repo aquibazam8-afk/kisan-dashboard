@@ -119,6 +119,7 @@ export default function KisanDashboard() {
     try {
       const fd = new FormData();
       fd.append("file", f);
+      fd.append("crop", crop);
       const r = await fetch(`${API_BASE}/predict`, { method: "POST", body: fd });
       setPred(await r.json());
     } catch {

@@ -15,11 +15,12 @@ from pathlib import Path
 import numpy as np
 import requests
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
 from disease_info import DISEASE_INFO, CLASS_NAMES
+from paddy_disease_info import PADDY_DISEASE_INFO, PADDY_CLASS_NAMES
 
 # --- Config ----------------------------------------------------------------
 BASE = Path(__file__).parent
@@ -27,8 +28,10 @@ load_dotenv(BASE / ".env")
 
 # Default: model sits next to this file. Change if you keep it in the repo.
 MODEL_PATH = os.environ.get("MODEL_PATH", str(BASE / "trained_plant_disease_model.keras"))
+PADDY_MODEL_PATH = os.environ.get("PADDY_MODEL_PATH", str(BASE / "paddy_disease_model.keras"))
 DATA_DIR = BASE / "data"
-IMG_SIZE = (128, 128)  # must match the model's training input
+IMG_SIZE = (128, 128)  # must match the PlantVillage model's training input
+PADDY_IMG_SIZE = (224, 224)  # must match the paddy MobileNetV2 model's input
 
 # Live mandi prices (data.gov.in Agmarknet resource). Only read from the env —
 # never hardcode the key. Absent key means the /mandi endpoint stays on the
@@ -60,18 +63,32 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Model (loaded lazily so the server starts even without TF ready) ------
+# --- Models -----------------------------------------------------------------
 _model = None
+_paddy_model = None
+
+
+@app.on_event("startup")
+def _load_models():
+    """Load both models at startup so the first /predict call isn't slow."""
+    global _model, _paddy_model
+    import tensorflow as tf
+    if Path(MODEL_PATH).exists():
+        _model = tf.keras.models.load_model(MODEL_PATH)
+    if Path(PADDY_MODEL_PATH).exists():
+        _paddy_model = tf.keras.models.load_model(PADDY_MODEL_PATH)
 
 
 def get_model():
-    global _model
     if _model is None:
-        import tensorflow as tf  # imported here to keep startup fast
-        if not Path(MODEL_PATH).exists():
-            raise HTTPException(500, f"Model file not found at {MODEL_PATH}")
-        _model = tf.keras.models.load_model(MODEL_PATH)
+        raise HTTPException(500, f"Model file not found at {MODEL_PATH}")
     return _model
+
+
+def get_paddy_model():
+    if _paddy_model is None:
+        raise HTTPException(500, f"Paddy model file not found at {PADDY_MODEL_PATH}")
+    return _paddy_model
 
 
 def _load_json(name):
@@ -178,7 +195,11 @@ def _live_mandi_data():
 # --- Endpoints -------------------------------------------------------------
 @app.get("/health")
 def health():
-    return {"status": "ok", "model_present": Path(MODEL_PATH).exists()}
+    return {
+        "status": "ok",
+        "model_present": Path(MODEL_PATH).exists(),
+        "paddy_model_present": Path(PADDY_MODEL_PATH).exists(),
+    }
 
 
 @app.get("/weather")
@@ -200,26 +221,9 @@ def mandi(crop: str | None = None):
     return data
 
 
-@app.post("/predict")
-async def predict(file: UploadFile = File(...)):
-    """Accept a leaf image, return disease + confidence + bilingual advice."""
-    try:
-        raw = await file.read()
-        img = Image.open(io.BytesIO(raw)).convert("RGB").resize(IMG_SIZE)
-    except Exception:
-        raise HTTPException(400, "Could not read image. Send a valid JPG/PNG.")
-
-    arr = np.expand_dims(np.array(img, dtype=np.float32), axis=0)
-    preds = get_model().predict(arr, verbose=0)[0]
-
-    idx = int(np.argmax(preds))
-    confidence = round(float(np.max(preds)) * 100, 1)
-    key = CLASS_NAMES[idx]
-    info = DISEASE_INFO.get(key, {})
-    is_healthy = key.endswith("healthy")
-
-    # Low-confidence guard: don't give a farmer a confident wrong answer.
-    low_conf = confidence < 60
+def _prediction_response(key, confidence, info, is_healthy):
+    """Shared response shape for both the PlantVillage and paddy models."""
+    low_conf = confidence < 60  # Low-confidence guard: don't give a farmer a confident wrong answer.
 
     return {
         "class": key,
@@ -235,3 +239,40 @@ async def predict(file: UploadFile = File(...)):
             "hi": "कम भरोसा — कृपया स्थानीय विशेषज्ञ या KVK से पुष्टि करें।" if low_conf else "",
         },
     }
+
+
+@app.post("/predict")
+async def predict(file: UploadFile = File(...), crop: str | None = Form(None)):
+    """Accept a leaf image, return disease + confidence + bilingual advice.
+
+    ?crop=paddy routes the image through the paddy MobileNetV2 model;
+    any other value (or none) keeps the existing PlantVillage behavior.
+    """
+    try:
+        raw = await file.read()
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+    except Exception:
+        raise HTTPException(400, "Could not read image. Send a valid JPG/PNG.")
+
+    if crop == "paddy":
+        arr = np.expand_dims(np.array(img.resize(PADDY_IMG_SIZE), dtype=np.float32), axis=0)
+        preds = get_paddy_model().predict(arr, verbose=0)[0]
+
+        idx = int(np.argmax(preds))
+        confidence = round(float(np.max(preds)) * 100, 1)
+        key = PADDY_CLASS_NAMES[idx]
+        info = PADDY_DISEASE_INFO.get(key, {})
+        is_healthy = key == "normal"
+
+        return _prediction_response(key, confidence, info, is_healthy)
+
+    arr = np.expand_dims(np.array(img.resize(IMG_SIZE), dtype=np.float32), axis=0)
+    preds = get_model().predict(arr, verbose=0)[0]
+
+    idx = int(np.argmax(preds))
+    confidence = round(float(np.max(preds)) * 100, 1)
+    key = CLASS_NAMES[idx]
+    info = DISEASE_INFO.get(key, {})
+    is_healthy = key.endswith("healthy")
+
+    return _prediction_response(key, confidence, info, is_healthy)
