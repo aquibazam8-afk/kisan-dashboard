@@ -224,6 +224,16 @@ def _fetch_rainfall_records(district="Ranchi", state="Jharkhand"):
     )
     resp.raise_for_status()
     records = resp.json().get("records", [])
+
+    # The source data has duplicate rows for some dates (same date + value
+    # repeated) — dedupe here so every caller gets one row per date.
+    deduped = {}
+    for r in records:
+        date = r.get("Date")
+        if date is not None and date not in deduped:
+            deduped[date] = r
+    records = list(deduped.values())
+
     _rainfall_cache[district] = {"records": records, "fetched_at": now}
     return records
 
@@ -255,6 +265,33 @@ def mandi(crop: str | None = None):
     if crop:
         return {"crop": crop, "prices": data.get(crop, [])}
     return data
+
+
+@app.get("/rainfall")
+def rainfall(district: str = "Ranchi", days: int = 30):
+    """Recent daily rainfall for a Jharkhand district (data.gov.in NRSC data).
+
+    Returns an empty day list when DATAGOV_API_KEY is unset or the live fetch
+    fails, rather than breaking the request.
+    """
+    if not DATAGOV_API_KEY:
+        return {"district": district, "days": []}
+
+    try:
+        records = _fetch_rainfall_records(district)
+    except Exception:
+        return {"district": district, "days": []}
+
+    dated = sorted((r for r in records if r.get("Date")), key=lambda r: r["Date"])
+    recent = dated[-days:] if days else dated
+
+    return {
+        "district": district,
+        "days": [
+            {"date": r["Date"], "rain_mm": r.get("Avg_rainfall")}
+            for r in recent
+        ],
+    }
 
 
 def _prediction_response(key, confidence, info, is_healthy):
