@@ -21,6 +21,7 @@ from PIL import Image
 
 from disease_info import DISEASE_INFO, CLASS_NAMES
 from paddy_disease_info import PADDY_DISEASE_INFO, PADDY_CLASS_NAMES
+from sowing_advisor import assess_kharif_sowing, NoRainfallDataError
 
 # --- Config ----------------------------------------------------------------
 BASE = Path(__file__).parent
@@ -292,6 +293,42 @@ def rainfall(district: str = "Ranchi", days: int = 30):
             for r in recent
         ],
     }
+
+
+@app.get("/sowing-advisory")
+def sowing_advisory(district: str = "Ranchi"):
+    """Rainfed Kharif sowing-window recommendation: sow / wait / switch.
+
+    Pulls all cached rainfall records for `district` (not just the last N
+    days /rainfall returns) so the Jun 1-today cumulative total is complete,
+    then runs them through the placeholder thresholds in sowing_advisor.py.
+    If the current season has no data yet (the upstream feed lags behind
+    today), the advisor falls back to the most recent complete season on
+    record and labels the response accordingly (`season`, `note`).
+
+    Unlike /mandi and /rainfall, this doesn't fall back to sample data on
+    failure — a sowing recommendation built on missing rainfall data would
+    be misleading rather than merely stale, so it fails loudly instead, but
+    only when there's truly no Kharif-season data to work with at all.
+    """
+    if not DATAGOV_API_KEY:
+        raise HTTPException(503, "Live rainfall data is not configured.")
+
+    try:
+        records = _fetch_rainfall_records(district)
+    except Exception:
+        raise HTTPException(503, "Could not fetch live rainfall data.")
+
+    normalized = [
+        {"date": r["Date"], "rain_mm": r.get("Avg_rainfall")}
+        for r in records
+        if r.get("Date")
+    ]
+
+    try:
+        return assess_kharif_sowing(normalized)
+    except NoRainfallDataError:
+        raise HTTPException(503, "No Kharif-season rainfall data available for this district.")
 
 
 def _prediction_response(key, confidence, info, is_healthy):
