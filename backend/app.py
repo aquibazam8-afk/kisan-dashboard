@@ -33,12 +33,18 @@ DATA_DIR = BASE / "data"
 IMG_SIZE = (128, 128)  # must match the PlantVillage model's training input
 PADDY_IMG_SIZE = (224, 224)  # must match the paddy MobileNetV2 model's input
 
-# Live mandi prices (data.gov.in Agmarknet resource). Only read from the env —
-# never hardcode the key. Absent key means the /mandi endpoint stays on the
-# bundled sample data.
+# Live mandi + rainfall data (data.gov.in). Only read the key from the env —
+# never hardcode it. Absent key means these endpoints stay on sample/empty
+# data.
 DATAGOV_API_KEY = os.environ.get("DATAGOV_API_KEY") or None
 AGMARKNET_URL = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
+RAINFALL_URL = "https://api.data.gov.in/resource/6c05cd1b-ed59-40c2-bc31-e314f39c6971"
 MANDI_CACHE_TTL = 3600  # seconds
+RAINFALL_CACHE_TTL = 6 * 3600  # rainfall is published daily, so cache longer
+
+# api.data.gov.in silently stalls (no response, no error) on requests' default
+# User-Agent — presumably a bot filter. A curl-like UA gets an instant reply.
+DATAGOV_HEADERS = {"User-Agent": "curl/8.4.0", "Accept": "*/*"}
 
 # crop key (as used by data/mandi.json and the frontend) -> commodity name
 # tokens to match against the Agmarknet "commodity" field.
@@ -139,6 +145,7 @@ def _fetch_agmarknet_records():
             "limit": 100,
             "filters[state.keyword]": "Jharkhand",
         },
+        headers=DATAGOV_HEADERS,
         timeout=10,
     )
     resp.raise_for_status()
@@ -190,6 +197,35 @@ def _live_mandi_data():
             })
         result[crop] = entries or fallback.get(crop, [])
     return result
+
+
+# --- Live rainfall -----------------------------------------------------------
+_rainfall_cache = {}  # district -> {"records": [...], "fetched_at": float}
+
+
+def _fetch_rainfall_records(district="Ranchi", state="Jharkhand"):
+    """Daily district rainfall records from data.gov.in, cached per district."""
+    now = time.time()
+    cached = _rainfall_cache.get(district)
+    if cached is not None and (now - cached["fetched_at"]) < RAINFALL_CACHE_TTL:
+        return cached["records"]
+
+    resp = requests.get(
+        RAINFALL_URL,
+        params={
+            "api-key": DATAGOV_API_KEY,
+            "format": "json",
+            "limit": 1000,
+            "filters[State]": state,
+            "filters[District]": district,
+        },
+        headers=DATAGOV_HEADERS,
+        timeout=15,
+    )
+    resp.raise_for_status()
+    records = resp.json().get("records", [])
+    _rainfall_cache[district] = {"records": records, "fetched_at": now}
+    return records
 
 
 # --- Endpoints -------------------------------------------------------------
