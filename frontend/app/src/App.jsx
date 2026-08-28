@@ -72,6 +72,7 @@ const T = {
   sub: { en: "Ranchi District", hi: "रांची ज़िला" },
   weather: { en: "Weather", hi: "मौसम" },
   sowing: { en: "Sowing", hi: "बुआई सलाह" },
+  advisory: { en: "Sowing Advisor", hi: "बुआई सलाहकार" },
   mandi: { en: "Mandi rates", hi: "मंडी भाव" },
   pest: { en: "Pest alert", hi: "कीट चेतावनी" },
   disease: { en: "Disease check", hi: "रोग जाँच" },
@@ -84,13 +85,24 @@ const T = {
   confidence: { en: "confidence", hi: "भरोसा" },
   whatToDo: { en: "What to do", hi: "क्या करें" },
   offline: { en: "Backend offline — showing sample data. Disease check needs the server running.", hi: "सर्वर बंद — नमूना डेटा दिख रहा। रोग जाँच हेतु सर्वर चालू करें।" },
+  advisoryLoading: { en: "Checking this season's rainfall…", hi: "इस सीज़न की बारिश जाँची जा रही है…" },
+  advisoryError: { en: "Could not load the sowing advisory. Make sure the server is running.", hi: "बुआई सलाह लोड नहीं हो सकी। सर्वर चालू है या नहीं जाँचें।" },
+  retry: { en: "Retry", hi: "फिर कोशिश करें" },
 };
 
 const trendMark = { up: "▲", down: "▼", flat: "—" };
 const trendColor = { up: "#2f7d4f", down: "#b23b3b", flat: "#8a7f6b" };
 const levelColor = { high: "#b23b3b", medium: "#c98a2b", low: "#2f7d4f" };
-const MODULES = ["weather", "sowing", "mandi", "pest", "disease"];
-const MODULE_ICON = { weather: "🌦️", sowing: "🌱", mandi: "💰", pest: "🐛", disease: "🔬" };
+const MODULES = ["weather", "sowing", "advisory", "mandi", "pest", "disease"];
+const MODULE_ICON = { weather: "🌦️", sowing: "🌱", advisory: "🧭", mandi: "💰", pest: "🐛", disease: "🔬" };
+
+const ADVISORY_STATUS_LABEL = {
+  sow:    { en: "Sow now", hi: "अभी बोएं" },
+  wait:   { en: "Wait", hi: "प्रतीक्षा करें" },
+  switch: { en: "Switch crop", hi: "फसल बदलें" },
+};
+const ADVISORY_STATUS_ICON = { sow: "✅", wait: "⏳", switch: "🔁" };
+const ADVISORY_STATUS_COLOR = { sow: "#2f7d4f", wait: "#c98a2b", switch: "#b23b3b" };
 
 export default function KisanDashboard() {
   const [lang, setLang] = useState("hi");
@@ -101,6 +113,9 @@ export default function KisanDashboard() {
   const [online, setOnline] = useState(false);
   const [pred, setPred] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [advisory, setAdvisory] = useState(null);
+  const [advisoryLoading, setAdvisoryLoading] = useState(false);
+  const [advisoryError, setAdvisoryError] = useState(false);
   const fileRef = useRef();
   const t = (o) => (o ? o[lang] : "");
 
@@ -108,6 +123,17 @@ export default function KisanDashboard() {
     fetch(`${API_BASE}/weather`).then(r => r.json()).then(d => { setWeather(d); setOnline(true); }).catch(() => {});
     fetch(`${API_BASE}/mandi`).then(r => r.json()).then(setMandi).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (tab !== "advisory" || advisory || advisoryLoading) return;
+    setAdvisoryLoading(true);
+    setAdvisoryError(false);
+    fetch(`${API_BASE}/sowing-advisory?district=Ranchi`)
+      .then(r => { if (!r.ok) throw new Error("advisory fetch failed"); return r.json(); })
+      .then(setAdvisory)
+      .catch(() => setAdvisoryError(true))
+      .finally(() => setAdvisoryLoading(false));
+  }, [tab, advisory, advisoryLoading]);
 
   const prices = (mandi[crop] || []);
   const best = prices.reduce((a, b) => (b.price > (a?.price ?? 0) ? b : a), prices[0]);
@@ -189,6 +215,34 @@ export default function KisanDashboard() {
           </div>
         )}
 
+        {tab === "advisory" && (
+          <div style={S.advisoryBox}>
+            {advisoryLoading && <p style={S.analyzing}>{t(T.advisoryLoading)}</p>}
+
+            {!advisoryLoading && advisoryError && (
+              <div>
+                <p style={S.err}>{t(T.advisoryError)}</p>
+                <button style={S.retryBtn} onClick={() => { setAdvisory(null); setAdvisoryError(false); }}>
+                  {t(T.retry)}
+                </button>
+              </div>
+            )}
+
+            {!advisoryLoading && !advisoryError && advisory && (
+              <div>
+                <div style={{ ...S.advisoryHead, color: ADVISORY_STATUS_COLOR[advisory.status] }}>
+                  <span style={S.advisoryIcon}>{ADVISORY_STATUS_ICON[advisory.status]}</span>
+                  {t(ADVISORY_STATUS_LABEL[advisory.status])}
+                </div>
+                <p style={S.advisoryReasoning}>{t(advisory.reasoning)}</p>
+                {advisory.note && (
+                  <p style={S.lowConf}>⚠️ {t(advisory.note)}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {tab === "mandi" && (
           <div>
             {prices.map((p, i) => (
@@ -267,7 +321,7 @@ const S = {
   cropBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: `1.5px solid ${line}`, background: "#fff", borderRadius: 12, padding: "10px 4px", fontSize: 13, fontWeight: 700, cursor: "pointer", color: ink },
   cropOn: { background: clay, color: "#fff", borderColor: clay },
   cropIcon: { fontSize: 24 },
-  tabs: { display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 6, marginBottom: 14 },
+  tabs: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginBottom: 14 },
   tab: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, border: `1px solid ${line}`, background: "#fffdf8", borderRadius: 10, padding: "8px 2px", cursor: "pointer", color: ink },
   tabOn: { background: "#3a2e1a", color: "#fff", borderColor: "#3a2e1a" },
   tabIcon: { fontSize: 20 },
@@ -283,6 +337,11 @@ const S = {
   k: { fontSize: 14, color: "#7a6d54", fontWeight: 600 },
   v: { fontSize: 14, fontWeight: 700, textAlign: "right" },
   tip: { fontSize: 14, marginTop: 10, marginBottom: 0, lineHeight: 1.5, color: "#4a3f2c", background: "#f4efe2", padding: 10, borderRadius: 8, borderLeft: `3px solid #6b8e23` },
+  advisoryBox: {},
+  advisoryHead: { display: "flex", alignItems: "center", gap: 8, fontSize: 22, fontWeight: 900 },
+  advisoryIcon: { fontSize: 24 },
+  advisoryReasoning: { fontSize: 14, lineHeight: 1.6, marginTop: 12, color: "#4a3f2c" },
+  retryBtn: { marginTop: 10, background: clay, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" },
   priceRow: { display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px dashed ${line}` },
   mandiName: { fontSize: 15, fontWeight: 600 },
   price: { fontSize: 16, fontWeight: 800 },
