@@ -60,8 +60,21 @@ gap requires a locally retrained classifier, not a national one.
 - [x] **Phase 0** — Full-stack app: CNN disease detection, bilingual disease info, weather and mandi endpoints
 - [x] **Phase 1** — Expanded crop coverage; live Agmarknet mandi API wired in, with graceful fallback (live pull pending confirmation due to intermittent API availability)
 - [ ] **Phase 2** — Locally retrained disease classifier (paddy, arhar)
-- [ ] **Phase 3** — Rainfed sowing-advisor (IMD rainfall → crop-switch recommendation, thresholds anchored to ATMA SREP)
+- [x] **Phase 3** — Rainfed sowing-advisor: live rainfall (data.gov.in, NRSC VIC model, Ranchi district) feeds a
+      `/sowing-advisory` endpoint that classifies the season into sow / wait / switch against thresholds anchored
+      to the ATMA SREP, with bilingual (Hindi/English) reasoning citing the actual rainfall figures, surfaced in
+      a dedicated frontend tab. When current-season data isn't yet available from the upstream feed, it falls
+      back to the most recent complete season and labels the response accordingly — an honest data-availability
+      signal, not a bug.
 - [ ] **Phase 4** — District dashboard: block-level rainfall, sowing progress and disease reports for extension staff
+
+### Bug fixed during Phase 3
+
+While wiring up the rainfall fetch, `api.data.gov.in` was found to silently stall — no response, no error,
+just a hung connection — on `requests`' default User-Agent header, presumably a bot filter. A curl-like
+User-Agent fixed it instantly. The same silent stall was also affecting the **already-shipped Agmarknet mandi
+endpoint**, causing it to time out and quietly fall back to sample data on every call. Both endpoints now share
+a `DATAGOV_HEADERS` constant with the fix.
 
 ---
 
@@ -70,7 +83,7 @@ gap requires a locally retrained classifier, not a national one.
 | Source | Use | Status |
 |---|---|---|
 | Agmarknet | Live mandi prices | Integrated (with fallback) |
-| IMD / data.gov.in | Rainfall for sowing-advisor | Planned (Phase 3) |
+| data.gov.in (NRSC VIC model) | Rainfall for sowing-advisor | Integrated |
 | ATMA Ranchi SREP | Crop-switch thresholds and recommended alternatives | Reference |
 | PlantVillage | Base CNN weights (pre-trained, 38-class) | Integrated |
 
