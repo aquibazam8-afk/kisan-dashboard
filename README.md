@@ -61,11 +61,15 @@ gap requires a locally retrained classifier, not a national one.
 - [x] **Phase 1** — Expanded crop coverage; live Agmarknet mandi API wired in, with graceful fallback (live pull pending confirmation due to intermittent API availability)
 - [ ] **Phase 2** — Locally retrained disease classifier (paddy, arhar)
 - [x] **Phase 3** — Rainfed sowing-advisor: live rainfall (data.gov.in, NRSC VIC model, Ranchi district) feeds a
-      `/sowing-advisory` endpoint that classifies the season into sow / wait / switch against thresholds anchored
-      to the ATMA SREP, with bilingual (Hindi/English) reasoning citing the actual rainfall figures, surfaced in
-      a dedicated frontend tab. When current-season data isn't yet available from the upstream feed, it falls
-      back to the most recent complete season and labels the response accordingly — an honest data-availability
-      signal, not a bug.
+      `/sowing-advisory` endpoint that assesses cumulative rainfall over the Jun 20-30 sowing-decision window —
+      the recommended sowing time for upland rice, maize and pigeon pea per ATMA Ranchi's SREP, Chapter 9 — and
+      classifies it into sow / wait / switch using IMD's official departure-from-normal rainfall standard (Large
+      Excess / Excess / Normal / Deficient / Large Deficient / No Rain), with "normal" computed as a leave-one-out
+      historical average across the other years on record (the assessed season's own rainfall never feeds its own
+      baseline). Bilingual (Hindi/English) reasoning cites the actual departure %, category, and both actual and
+      normal mm figures, surfaced in a dedicated frontend tab. When current-season data isn't yet available from
+      the upstream feed, it falls back to the most recent complete window and labels the response accordingly —
+      an honest data-availability signal, not a bug.
 - [ ] **Phase 4** — District dashboard: block-level rainfall, sowing progress and disease reports for extension staff
 
 ### Bug fixed during Phase 3
