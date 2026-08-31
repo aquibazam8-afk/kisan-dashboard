@@ -78,6 +78,16 @@ a `DATAGOV_HEADERS` constant with the fix.
 
 ---
 
+## Considered but deferred
+
+**AlphaEarth Foundations** (Google Earth Engine satellite embeddings) was evaluated as a potential
+land-use-history enhancement to the sowing advisor. Licensing was confirmed compatible (CC-BY 4.0), but the
+approach was deprioritized: its 10m pixel resolution is coarse relative to individual field size, and its
+annual-only update cadence isn't useful for in-season decisions. Kept as a possible future direction, not
+pursued for now.
+
+---
+
 ## Data sources
 
 | Source | Use | Status |
