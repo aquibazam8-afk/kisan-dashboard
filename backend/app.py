@@ -300,11 +300,12 @@ def sowing_advisory(district: str = "Ranchi"):
     """Rainfed Kharif sowing-window recommendation: sow / wait / switch.
 
     Pulls all cached rainfall records for `district` (not just the last N
-    days /rainfall returns) so the Jun 1-today cumulative total is complete,
-    then runs them through the placeholder thresholds in sowing_advisor.py.
-    If the current season has no data yet (the upstream feed lags behind
-    today), the advisor falls back to the most recent complete season on
-    record and labels the response accordingly (`season`, `note`).
+    days /rainfall returns) so both the Jun 20-30 sowing-window total and
+    the multi-year historical normal used for IMD's departure classification
+    are complete (see sowing_advisor.py). If the current season's window has
+    no data yet (the upstream feed lags behind today), the advisor falls
+    back to the most recent complete window on record and labels the
+    response accordingly (`season`, `note`).
 
     Unlike /mandi and /rainfall, this doesn't fall back to sample data on
     failure — a sowing recommendation built on missing rainfall data would
