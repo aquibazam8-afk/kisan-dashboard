@@ -41,9 +41,10 @@ WAIT_WINDOW_DAYS = 14  # how long to recommend waiting before reassessing
 #   Deficient      : -20% to -59%
 #   Large Deficient: -60% to -99%
 #   No Rain        : -100%
-# "Normal" here is computed as the historical average of the Jun 20-30
-# cumulative rainfall across all years available in the rainfall dataset
-# (spans 2018-2025) — not a fixed mm figure.
+# "Normal" here is a leave-one-out historical average: the mean of the Jun
+# 20-30 cumulative rainfall across every *other* year available in the
+# rainfall dataset (spans 2018-2025), excluding the season being assessed —
+# not a fixed mm figure, and never built from the year it's judging.
 IMD_DEPARTURE_CATEGORY_TO_STATUS = {
     "Large Excess": "sow",
     "Excess": "sow",
@@ -176,12 +177,16 @@ def assess_kharif_sowing(records, today=None):
     it; otherwise falls back to the most recent complete window on record
     and labels the response accordingly (`season`, `note`). The result is
     classified against IMD's departure-from-normal percentage bands, with
-    "normal" computed as the historical average of this window's cumulative
-    rainfall across every year present in `records`.
+    "normal" computed as a leave-one-out historical average: the mean of
+    this window's cumulative rainfall across every *other* year present in
+    `records`, excluding the season being assessed itself — proper
+    climatological practice, since a year's normal should not be built
+    from its own data.
 
     Raises NoRainfallDataError only when there's no Jun 20-30 window data at
-    all to fall back to — callers should treat that as a hard failure, not
-    silently classify off zero records.
+    all to fall back to, or when the assessed year is the only year on
+    record (leaving nothing to average for its normal) — callers should
+    treat that as a hard failure, not silently classify off zero records.
     """
     today = today or date.today()
     parsed = _parse_records(records)
@@ -194,7 +199,14 @@ def assess_kharif_sowing(records, today=None):
     year_totals = _year_window_totals(parsed)
     if not year_totals:
         raise NoRainfallDataError("No Jun 20-30 sowing-window rainfall records available.")
-    normal_mm = round(sum(year_totals.values()) / len(year_totals), 1)
+    # Leave-one-out: the assessed year's own rainfall must not feed its normal.
+    other_year_totals = {y: v for y, v in year_totals.items() if y != season_year}
+    if not other_year_totals:
+        raise NoRainfallDataError(
+            "No other years on record to compute a historical normal for "
+            f"{season_year}'s Jun 20-30 window."
+        )
+    normal_mm = round(sum(other_year_totals.values()) / len(other_year_totals), 1)
 
     departure_pct = _departure_pct(actual_mm, normal_mm)
     category = _classify_departure(departure_pct)
@@ -203,14 +215,14 @@ def assess_kharif_sowing(records, today=None):
     departure_str = f"{departure_pct:+.0f}%"
     base_en = (
         f"{actual_mm}mm received in the Jun 20-30 sowing window vs a historical "
-        f"normal of {normal_mm}mm (average across {len(year_totals)} years on record) "
-        f"— a {departure_str} departure, classified '{category}' per IMD's rainfall "
-        f"standard."
+        f"normal of {normal_mm}mm (average across {len(other_year_totals)} other years "
+        f"on record) — a {departure_str} departure, classified '{category}' per IMD's "
+        f"rainfall standard."
     )
     base_hi = (
         f"20-30 जून की बुआई अवधि में {actual_mm}मिमी बारिश हुई, जबकि ऐतिहासिक सामान्य "
-        f"{normal_mm}मिमी है ({len(year_totals)} वर्षों का औसत) — {departure_str} विचलन, "
-        f"IMD मानक अनुसार '{category}' श्रेणी।"
+        f"{normal_mm}मिमी है ({len(other_year_totals)} अन्य वर्षों का औसत) — {departure_str} "
+        f"विचलन, IMD मानक अनुसार '{category}' श्रेणी।"
     )
 
     if status == "switch":
@@ -265,7 +277,7 @@ def assess_kharif_sowing(records, today=None):
         "normal_rain_mm": normal_mm,
         "departure_pct": departure_pct,
         "category": category,
-        "normal_years_count": len(year_totals),
+        "normal_years_count": len(other_year_totals),
         "alternative_crop": alternative_crop,
         "wait_window_days": wait_window_days,
         "note": note,

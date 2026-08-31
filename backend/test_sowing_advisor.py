@@ -78,6 +78,7 @@ class SowingWindowTests(unittest.TestCase):
         # Heavy rain in early June (before the window) and July (after it)
         # must not count toward the assessed total.
         records = _window_records(2025, 20)  # normal-ish window: 220mm total
+        records += _window_records(2024, 20)  # a prior year, so leave-one-out has a normal to compute
         records.append({"date": "2025-06-01", "rain_mm": 500})
         records.append({"date": "2025-07-05", "rain_mm": 500})
         result = assess_kharif_sowing(records, today=date(2025, 7, 10))
@@ -204,6 +205,7 @@ class AssessKharifSowingTests(unittest.TestCase):
         # Mid-window "today" (Jun 25): only Jun 20-25 data should count,
         # not the full Jun 20-30 window.
         records = _window_records(2020, 20, start_day=20, end_day=30)
+        records += _window_records(2019, 20)  # a prior year, so leave-one-out has a normal to compute
         result = assess_kharif_sowing(records, today=date(2020, 6, 25))
         self.assertTrue(result["current_season"])
         self.assertEqual(result["as_of"], "2020-06-25")
@@ -213,27 +215,47 @@ class AssessKharifSowingTests(unittest.TestCase):
         with self.assertRaises(NoRainfallDataError):
             assess_kharif_sowing([], today=date(2025, 6, 30))
 
+    def test_single_year_dataset_raises_no_normal_available(self):
+        # Only the assessed year is on record, so a leave-one-out normal
+        # has nothing to average — this must fail loudly, not silently
+        # fall back to comparing the year against itself.
+        records = _window_records(2020, 20)
+        with self.assertRaises(NoRainfallDataError):
+            assess_kharif_sowing(records, today=date(2020, 6, 30))
+
     def test_malformed_records_are_skipped_not_fatal(self):
         records = _window_records(2020, 20)
+        records += _window_records(2019, 20)
         records.append({"date": "not-a-date", "rain_mm": 999})
         records.append({"rain_mm": 50})  # missing date
         result = assess_kharif_sowing(records, today=date(2020, 6, 30))
         self.assertEqual(result["cumulative_rain_mm"], 220.0)
 
-    def test_normal_includes_assessed_year_in_average(self):
-        # By design, "normal" is the average across every year present in
-        # the dataset, including the season being assessed (the spec says
-        # "historical average across all available years in the dataset",
-        # not "all years excluding this one") — verify that arithmetic
-        # explicitly so a future change in this convention is caught here.
-        records = self._multi_year_records(
-            {2018: 20, 2019: 20},
-            assess_year=2020, assess_daily_mm=40,
+    def test_normal_excludes_assessed_year_leave_one_out(self):
+        # Proper climatological practice: a year's normal must be built
+        # only from *other* years, never from its own data. Prove it by
+        # varying the assessed year's own rainfall while holding the
+        # history years fixed — the computed normal must not move.
+        records_low = self._multi_year_records(
+            {2018: 20, 2019: 20}, assess_year=2020, assess_daily_mm=5,
         )
-        result = assess_kharif_sowing(records, today=date(2020, 6, 30))
-        # years: 220, 220, 440 -> normal = 880/3 = 293.3
-        self.assertEqual(result["normal_rain_mm"], round(880 / 3, 1))
-        self.assertEqual(result["normal_years_count"], 3)
+        records_high = self._multi_year_records(
+            {2018: 20, 2019: 20}, assess_year=2020, assess_daily_mm=80,
+        )
+        result_low = assess_kharif_sowing(records_low, today=date(2020, 6, 30))
+        result_high = assess_kharif_sowing(records_high, today=date(2020, 6, 30))
+
+        # Normal = average of 2018 + 2019 only (220mm each) = 220mm, in both
+        # cases — the assessed year's own value (55mm vs. 880mm) never
+        # entered the average.
+        self.assertEqual(result_low["normal_rain_mm"], 220.0)
+        self.assertEqual(result_high["normal_rain_mm"], 220.0)
+        self.assertEqual(result_low["normal_years_count"], 2)
+        self.assertEqual(result_high["normal_years_count"], 2)
+        # Sanity check this isn't a trivial always-equal case: the actuals
+        # (and resulting departures) genuinely differ between the two runs.
+        self.assertNotEqual(result_low["cumulative_rain_mm"], result_high["cumulative_rain_mm"])
+        self.assertNotEqual(result_low["departure_pct"], result_high["departure_pct"])
 
     def test_normal_years_count_reflects_dataset_span(self):
         records = self._multi_year_records(
@@ -241,7 +263,7 @@ class AssessKharifSowingTests(unittest.TestCase):
             assess_year=2024, assess_daily_mm=20,
         )
         result = assess_kharif_sowing(records, today=date(2024, 6, 30))
-        self.assertEqual(result["normal_years_count"], 7)  # 2018-2024 inclusive
+        self.assertEqual(result["normal_years_count"], 6)  # 2018-2023, excluding assessed 2024
 
 
 if __name__ == "__main__":
