@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
 // ── Backend URL. When running locally: http://localhost:8000 ────────────────
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 // Fallback data so the UI still renders if the backend isn't running yet.
 const FALLBACK_WEATHER = {

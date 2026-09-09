@@ -3,7 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 // ── District Situation Dashboard ─────────────────────────────────────────
 // Separate route (/staff) for ATMA/KVK extension staff. Dense, table-first
 // ops view — not the farmer app's card UI. Ranchi district only for now.
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 const DISTRICT = "Ranchi";
 
 const CROPS = [
