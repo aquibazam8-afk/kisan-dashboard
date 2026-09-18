@@ -19,6 +19,8 @@ from fastapi import FastAPI, File, Form, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
+from ai_edge_litert.interpreter import Interpreter
+
 from disease_info import DISEASE_INFO, CLASS_NAMES
 from paddy_disease_info import PADDY_DISEASE_INFO, PADDY_CLASS_NAMES
 from sowing_advisor import assess_kharif_sowing, NoRainfallDataError
@@ -28,8 +30,8 @@ BASE = Path(__file__).parent
 load_dotenv(BASE / ".env")
 
 # Default: model sits next to this file. Change if you keep it in the repo.
-MODEL_PATH = os.environ.get("MODEL_PATH", str(BASE / "trained_plant_disease_model.keras"))
-PADDY_MODEL_PATH = os.environ.get("PADDY_MODEL_PATH", str(BASE / "paddy_disease_model.keras"))
+MODEL_PATH = os.environ.get("MODEL_PATH", str(BASE / "trained_plant_disease_model.tflite"))
+PADDY_MODEL_PATH = os.environ.get("PADDY_MODEL_PATH", str(BASE / "paddy_disease_model.tflite"))
 DATA_DIR = BASE / "data"
 IMG_SIZE = (128, 128)  # must match the PlantVillage model's training input
 PADDY_IMG_SIZE = (224, 224)  # must match the paddy MobileNetV2 model's input
@@ -73,29 +75,39 @@ app.add_middleware(
 # --- Models -----------------------------------------------------------------
 _model = None
 _paddy_model = None
+_model_input_details = None
+_model_output_details = None
+_paddy_input_details = None
+_paddy_output_details = None
 
 
 @app.on_event("startup")
 def _load_models():
     """Load both models at startup so the first /predict call isn't slow."""
-    global _model, _paddy_model
-    import tensorflow as tf
+    global _model, _paddy_model, _model_input_details, _model_output_details
+    global _paddy_input_details, _paddy_output_details
     if Path(MODEL_PATH).exists():
-        _model = tf.keras.models.load_model(MODEL_PATH)
+        _model = Interpreter(model_path=MODEL_PATH)
+        _model.allocate_tensors()
+        _model_input_details = _model.get_input_details()
+        _model_output_details = _model.get_output_details()
     if Path(PADDY_MODEL_PATH).exists():
-        _paddy_model = tf.keras.models.load_model(PADDY_MODEL_PATH)
+        _paddy_model = Interpreter(model_path=PADDY_MODEL_PATH)
+        _paddy_model.allocate_tensors()
+        _paddy_input_details = _paddy_model.get_input_details()
+        _paddy_output_details = _paddy_model.get_output_details()
 
 
 def get_model():
     if _model is None:
         raise HTTPException(500, f"Model file not found at {MODEL_PATH}")
-    return _model
+    return _model, _model_input_details, _model_output_details
 
 
 def get_paddy_model():
     if _paddy_model is None:
         raise HTTPException(500, f"Paddy model file not found at {PADDY_MODEL_PATH}")
-    return _paddy_model
+    return _paddy_model, _paddy_input_details, _paddy_output_details
 
 
 def _load_json(name):
@@ -367,7 +379,10 @@ async def predict(file: UploadFile = File(...), crop: str | None = Form(None)):
 
     if crop == "paddy":
         arr = np.expand_dims(np.array(img.resize(PADDY_IMG_SIZE), dtype=np.float32), axis=0)
-        preds = get_paddy_model().predict(arr, verbose=0)[0]
+        interpreter, input_details, output_details = get_paddy_model()
+        interpreter.set_tensor(input_details[0]["index"], arr)
+        interpreter.invoke()
+        preds = interpreter.get_tensor(output_details[0]["index"])[0]
 
         idx = int(np.argmax(preds))
         confidence = round(float(np.max(preds)) * 100, 1)
@@ -378,7 +393,10 @@ async def predict(file: UploadFile = File(...), crop: str | None = Form(None)):
         return _prediction_response(key, confidence, info, is_healthy)
 
     arr = np.expand_dims(np.array(img.resize(IMG_SIZE), dtype=np.float32), axis=0)
-    preds = get_model().predict(arr, verbose=0)[0]
+    interpreter, input_details, output_details = get_model()
+    interpreter.set_tensor(input_details[0]["index"], arr)
+    interpreter.invoke()
+    preds = interpreter.get_tensor(output_details[0]["index"])[0]
 
     idx = int(np.argmax(preds))
     confidence = round(float(np.max(preds)) * 100, 1)
