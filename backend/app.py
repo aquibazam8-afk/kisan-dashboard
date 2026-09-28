@@ -8,6 +8,7 @@ Model: copy trained_plant_disease_model.keras into this backend/ folder,
 """
 import io
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -40,6 +41,12 @@ PADDY_IMG_SIZE = (224, 224)  # must match the paddy MobileNetV2 model's input
 # never hardcode it. Absent key means these endpoints stay on sample/empty
 # data.
 DATAGOV_API_KEY = os.environ.get("DATAGOV_API_KEY") or None
+# TEMP diagnostic: never log the key itself.
+logging.warning(
+    "DATAGOV_API_KEY set=%s length=%d",
+    DATAGOV_API_KEY is not None,
+    len(DATAGOV_API_KEY or ""),
+)
 AGMARKNET_URL = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
 RAINFALL_URL = "https://api.data.gov.in/resource/6c05cd1b-ed59-40c2-bc31-e314f39c6971"
 MANDI_CACHE_TTL = 3600  # seconds
@@ -293,6 +300,7 @@ def rainfall(district: str = "Ranchi", days: int = 30):
     try:
         records = _fetch_rainfall_records(district)
     except Exception:
+        logging.exception("rainfall fetch failed")
         return {"district": district, "days": []}
 
     dated = sorted((r for r in records if r.get("Date")), key=lambda r: r["Date"])
