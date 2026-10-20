@@ -259,6 +259,25 @@ def _fetch_rainfall_records(district="Ranchi", state="Jharkhand"):
 
 
 # --- Endpoints -------------------------------------------------------------
+@app.get("/debug-net")
+def debug_net():
+    """TEMP: can this server reach the outside? Returns only status/error type, never URLs or keys."""
+    targets = {
+        "example.com": "https://example.com",
+        "datagov_no_key": "https://api.data.gov.in/",
+        "datagov_with_key": RAINFALL_URL,
+    }
+    out = {}
+    for name, url in targets.items():
+        try:
+            params = {"api-key": DATAGOV_API_KEY, "format": "json", "limit": 1} if name == "datagov_with_key" else None
+            r = requests.get(url, params=params, headers=DATAGOV_HEADERS, timeout=10)
+            out[name] = r.status_code
+        except Exception as e:
+            out[name] = type(e).__name__
+    return out
+
+
 @app.get("/health")
 def health():
     return {
@@ -299,8 +318,9 @@ def rainfall(district: str = "Ranchi", days: int = 30):
 
     try:
         records = _fetch_rainfall_records(district)
-    except Exception:
-        logging.exception("rainfall fetch failed")
+    except Exception as e:
+        # Log only the error type: a traceback contains the request URL (and api-key).
+        logging.warning("rainfall fetch failed: %s", type(e).__name__)
         return {"district": district, "days": []}
 
     dated = sorted((r for r in records if r.get("Date")), key=lambda r: r["Date"])
