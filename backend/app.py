@@ -41,12 +41,6 @@ PADDY_IMG_SIZE = (224, 224)  # must match the paddy MobileNetV2 model's input
 # never hardcode it. Absent key means these endpoints stay on sample/empty
 # data.
 DATAGOV_API_KEY = os.environ.get("DATAGOV_API_KEY") or None
-# TEMP diagnostic: never log the key itself.
-logging.warning(
-    "DATAGOV_API_KEY set=%s length=%d",
-    DATAGOV_API_KEY is not None,
-    len(DATAGOV_API_KEY or ""),
-)
 AGMARKNET_URL = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070"
 RAINFALL_URL = "https://api.data.gov.in/resource/6c05cd1b-ed59-40c2-bc31-e314f39c6971"
 MANDI_CACHE_TTL = 3600  # seconds
@@ -259,25 +253,6 @@ def _fetch_rainfall_records(district="Ranchi", state="Jharkhand"):
 
 
 # --- Endpoints -------------------------------------------------------------
-@app.get("/debug-net")
-def debug_net():
-    """TEMP: can this server reach the outside? Returns only status/error type, never URLs or keys."""
-    targets = {
-        "example.com": "https://example.com",
-        "datagov_no_key": "https://api.data.gov.in/",
-        "datagov_with_key": RAINFALL_URL,
-    }
-    out = {}
-    for name, url in targets.items():
-        try:
-            params = {"api-key": DATAGOV_API_KEY, "format": "json", "limit": 1} if name == "datagov_with_key" else None
-            r = requests.get(url, params=params, headers=DATAGOV_HEADERS, timeout=10)
-            out[name] = r.status_code
-        except Exception as e:
-            out[name] = type(e).__name__
-    return out
-
-
 @app.get("/health")
 def health():
     return {
