@@ -88,7 +88,17 @@ const T = {
   advisoryLoading: { en: "Checking this season's rainfall…", hi: "इस सीज़न की बारिश जाँची जा रही है…" },
   advisoryError: { en: "Could not load the sowing advisory. Make sure the server is running.", hi: "बुआई सलाह लोड नहीं हो सकी। सर्वर चालू है या नहीं जाँचें।" },
   retry: { en: "Retry", hi: "फिर कोशिश करें" },
+  mandiSample: { en: "Sample prices — live market data unavailable", hi: "नमूना भाव — लाइव मंडी डेटा उपलब्ध नहीं" },
+  mandiSnapshot: (d) => ({ en: `Prices as of ${d}`, hi: `${d} के भाव` }),
+  rainSnapshot: (d) => ({ en: `Rainfall data saved on ${d}`, hi: `वर्षा डेटा ${d} को सहेजा गया` }),
 };
+
+// "2026-10-21" -> "21/10/2026"
+function fmtDay(iso) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
 
 const trendMark = { up: "▲", down: "▼", flat: "—" };
 const trendColor = { up: "#2f7d4f", down: "#b23b3b", flat: "#8a7f6b" };
@@ -116,12 +126,19 @@ export default function KisanDashboard() {
   const [advisory, setAdvisory] = useState(null);
   const [advisoryLoading, setAdvisoryLoading] = useState(false);
   const [advisoryError, setAdvisoryError] = useState(false);
+  const [dataStatus, setDataStatus] = useState(null);
   const fileRef = useRef();
   const t = (o) => (o ? o[lang] : "");
 
   useEffect(() => {
     fetch(`${API_BASE}/weather`).then(r => r.json()).then(d => { setWeather(d); setOnline(true); }).catch(() => {});
     fetch(`${API_BASE}/mandi`).then(r => r.json()).then(setMandi).catch(() => {});
+    // Where mandi/rainfall data came from (live/snapshot/sample). On failure
+    // dataStatus stays null and no source notes are shown.
+    fetch(`${API_BASE}/data-status`)
+      .then(r => { if (!r.ok) throw new Error("data-status fetch failed"); return r.json(); })
+      .then(setDataStatus)
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -137,6 +154,14 @@ export default function KisanDashboard() {
 
   const prices = (mandi[crop] || []);
   const best = prices.reduce((a, b) => (b.price > (a?.price ?? 0) ? b : a), prices[0]);
+
+  const mandiSource = dataStatus?.mandi?.source;
+  const mandiNote =
+    mandiSource === "sample" ? T.mandiSample :
+    mandiSource === "snapshot" ? T.mandiSnapshot(fmtDay(dataStatus.mandi.as_of)) :
+    null;
+  const rainNote =
+    dataStatus?.rainfall?.source === "snapshot" ? T.rainSnapshot(fmtDay(dataStatus.rainfall.as_of)) : null;
 
   async function onFile(e) {
     const f = e.target.files[0];
@@ -238,6 +263,7 @@ export default function KisanDashboard() {
                 {advisory.note && (
                   <p style={S.lowConf}>⚠️ {t(advisory.note)}</p>
                 )}
+                {rainNote && <div style={S.dataNote}>{t(rainNote)}</div>}
               </div>
             )}
           </div>
@@ -245,6 +271,7 @@ export default function KisanDashboard() {
 
         {tab === "mandi" && (
           <div>
+            {mandiNote && <div style={S.dataNote}>{t(mandiNote)}</div>}
             {prices.map((p, i) => (
               <div key={i} style={S.priceRow}>
                 <span style={S.mandiName}>{t(p.mandi)}</span>
@@ -366,4 +393,5 @@ const S = {
   resultDesc: { fontSize: 14, lineHeight: 1.5, marginTop: 10 },
   actionBox: { background: "#f4efe2", borderLeft: `3px solid #6b8e23`, padding: 10, borderRadius: 8, fontSize: 14, lineHeight: 1.5, marginTop: 8 },
   lowConf: { fontSize: 13, color: "#c98a2b", marginTop: 8, fontWeight: 600 },
+  dataNote: { background: "#fbf0d5", border: "1px solid #e6cf8f", borderRadius: 8, padding: 8, fontSize: 12, color: "#7a5c1e", margin: "10px 0" },
 };

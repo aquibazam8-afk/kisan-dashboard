@@ -41,6 +41,49 @@ function fmtDate(iso) {
   return `${d}/${m}`;
 }
 
+// "2026-10-21" -> "21/10/2026" (data dates can be from an earlier year)
+function fmtFullDate(iso) {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+
+// Bilingual note on where a section's data came from, or null when it's live
+// (the footnote's data date covers that) or /data-status is unavailable.
+function SourceNote({ status, kind }) {
+  if (!status) return null;
+  const d = fmtFullDate(status.as_of);
+  let en, hi;
+  if (kind === "mandi" && status.source === "sample") {
+    en = "Sample prices — live market data unavailable";
+    hi = "नमूना भाव — लाइव मंडी डेटा उपलब्ध नहीं";
+  } else if (kind === "mandi" && status.source === "snapshot") {
+    en = `Prices as of ${d}`;
+    hi = `${d} के भाव`;
+  } else if (kind === "rainfall" && status.source === "snapshot") {
+    en = `Rainfall data saved on ${d}`;
+    hi = `वर्षा डेटा ${d} को सहेजा गया`;
+  } else {
+    return null;
+  }
+  return (
+    <div style={S.warnNote}>
+      ⚠ {en}
+      <br />
+      <span style={S.hiText}>{hi}</span>
+    </div>
+  );
+}
+
+// Footnote with the data's own date (not the browser's fetch time, which
+// says nothing about how fresh the data is). Shown only for live data —
+// SourceNote already gives the date for snapshots.
+function DataDate({ status }) {
+  if (status?.source !== "live" || !status.as_of) return null;
+  const d = fmtFullDate(status.as_of);
+  return <div style={S.footnote}>Data date {d} · डेटा तिथि {d}</div>;
+}
+
 function ErrorBox({ onRetry }) {
   return (
     <div style={S.errBox}>
@@ -59,15 +102,14 @@ export default function StaffDashboard() {
   const [mandiLoading, setMandiLoading] = useState(true);
   const [mandiError, setMandiError] = useState(false);
 
-  const [advisoryAt, setAdvisoryAt] = useState(null);
-  const [mandiAt, setMandiAt] = useState(null);
+  const [dataStatus, setDataStatus] = useState(null);
 
   const loadAdvisory = useCallback(() => {
     setAdvisoryLoading(true);
     setAdvisoryError(false);
     fetch(`${API_BASE}/sowing-advisory?district=${DISTRICT}`)
       .then((r) => { if (!r.ok) throw new Error("advisory fetch failed"); return r.json(); })
-      .then((d) => { setAdvisory(d); setAdvisoryAt(new Date()); })
+      .then(setAdvisory)
       .catch(() => setAdvisoryError(true))
       .finally(() => setAdvisoryLoading(false));
   }, []);
@@ -78,14 +120,24 @@ export default function StaffDashboard() {
     // /mandi with no ?crop= returns every crop's price list in one call.
     fetch(`${API_BASE}/mandi`)
       .then((r) => { if (!r.ok) throw new Error("mandi fetch failed"); return r.json(); })
-      .then((d) => { setMandi(d); setMandiAt(new Date()); })
+      .then(setMandi)
       .catch(() => setMandiError(true))
       .finally(() => setMandiLoading(false));
+  }, []);
+
+  // Where the data came from (live/snapshot/sample) and its date. On failure
+  // dataStatus is null and the source notes/data dates are simply hidden.
+  const loadDataStatus = useCallback(() => {
+    fetch(`${API_BASE}/data-status?district=${DISTRICT}`)
+      .then((r) => { if (!r.ok) throw new Error("data-status fetch failed"); return r.json(); })
+      .then(setDataStatus)
+      .catch(() => setDataStatus(null));
   }, []);
 
   // Independent effects — one section's failure never blocks the other.
   useEffect(() => { loadAdvisory(); }, [loadAdvisory]);
   useEffect(() => { loadMandi(); }, [loadMandi]);
+  useEffect(() => { loadDataStatus(); }, [loadDataStatus]);
 
   const mandiRows = CROPS.map((c) => {
     const prices = (mandi && mandi[c.id]) || [];
@@ -110,7 +162,7 @@ export default function StaffDashboard() {
         </div>
         <button
           style={S.refreshBtn}
-          onClick={() => { loadAdvisory(); loadMandi(); }}
+          onClick={() => { loadAdvisory(); loadMandi(); loadDataStatus(); }}
         >
           ⟳ Refresh / ताज़ा करें
         </button>
@@ -135,6 +187,7 @@ export default function StaffDashboard() {
                   <span style={S.hiText}>{advisory.note.hi}</span>
                 </div>
               )}
+              <SourceNote status={dataStatus?.rainfall} kind="rainfall" />
               <table style={S.kvTable}>
                 <tbody>
                   <tr>
@@ -177,9 +230,7 @@ export default function StaffDashboard() {
                   </tr>
                 </tbody>
               </table>
-              {advisoryAt && (
-                <div style={S.footnote}>Updated {advisoryAt.toLocaleTimeString("en-IN")}</div>
-              )}
+              <DataDate status={dataStatus?.rainfall} />
             </>
           )}
         </section>
@@ -226,6 +277,7 @@ export default function StaffDashboard() {
 
         {!mandiLoading && !mandiError && mandi && (
           <>
+            <SourceNote status={dataStatus?.mandi} kind="mandi" />
             <table style={S.mandiTable} className="sd-mandi-table">
               <thead>
                 <tr>
@@ -258,9 +310,7 @@ export default function StaffDashboard() {
                 ))}
               </tbody>
             </table>
-            {mandiAt && (
-              <div style={S.footnote}>Updated {mandiAt.toLocaleTimeString("en-IN")}</div>
-            )}
+            <DataDate status={dataStatus?.mandi} />
           </>
         )}
       </section>
