@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import time
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +46,12 @@ AGMARKNET_URL = "https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a4
 RAINFALL_URL = "https://api.data.gov.in/resource/6c05cd1b-ed59-40c2-bc31-e314f39c6971"
 MANDI_CACHE_TTL = 3600  # seconds
 RAINFALL_CACHE_TTL = 6 * 3600  # rainfall is published daily, so cache longer
+
+# Snapshots of the live data, written by refresh_snapshots.py on a machine
+# that can reach api.data.gov.in (Render's servers can't) and committed.
+# Served when the live fetch fails, ahead of the bundled sample data.
+RAINFALL_SNAPSHOT = DATA_DIR / "rainfall_snapshot.json"
+MANDI_SNAPSHOT = DATA_DIR / "mandi_snapshot.json"
 
 # api.data.gov.in silently stalls (no response, no error) on requests' default
 # User-Agent — presumably a bot filter. A curl-like UA gets an instant reply.
@@ -116,6 +123,22 @@ def _load_json(name):
         return json.load(f)
 
 
+def _load_snapshot(path):
+    """Parsed snapshot file, or None if it's missing or unreadable."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        logging.warning("snapshot %s unreadable: %s", path.name, type(e).__name__)
+        return None
+
+
+def _iso_date(timestamp):
+    return date.fromtimestamp(timestamp).isoformat()
+
+
 # --- Live mandi prices -------------------------------------------------------
 _MANDI_HI = {
     entry["mandi"]["en"]: entry["mandi"]["hi"]
@@ -169,22 +192,13 @@ def _fetch_agmarknet_records():
     return records
 
 
-def _live_mandi_data():
-    """mandi.json-shaped dict built from live Agmarknet records.
+def _mandi_data_from_records(records):
+    """mandi.json-shaped dict built from Agmarknet records (live or snapshot).
 
-    Falls back to the bundled sample data per-crop when live coverage is
-    missing, and for the whole dataset if the fetch fails or times out, so
-    the app never breaks.
+    Falls back to the bundled sample data per-crop when a crop has no
+    records.
     """
     fallback = _load_json("mandi.json")
-    try:
-        records = _fetch_agmarknet_records()
-    except Exception:
-        return fallback
-
-    if not records:
-        return fallback
-
     result = {}
     for crop, tokens in CROP_COMMODITIES.items():
         matches = [
@@ -211,6 +225,28 @@ def _live_mandi_data():
             })
         result[crop] = entries or fallback.get(crop, [])
     return result
+
+
+def _mandi_data():
+    """(mandi.json-shaped dict, source, as_of) — never raises.
+
+    Order: live Agmarknet -> committed snapshot -> bundled sample data.
+    """
+    if DATAGOV_API_KEY:
+        try:
+            records = _fetch_agmarknet_records()
+            if records:
+                as_of = _iso_date(_mandi_cache["fetched_at"] or time.time())
+                return _mandi_data_from_records(records), "live", as_of
+        except Exception as e:
+            # Log only the error type: a traceback contains the request URL (and api-key).
+            logging.warning("mandi fetch failed: %s", type(e).__name__)
+
+    snapshot = _load_snapshot(MANDI_SNAPSHOT)
+    if snapshot and snapshot.get("records"):
+        return _mandi_data_from_records(snapshot["records"]), "snapshot", snapshot.get("fetched_at")
+
+    return _load_json("mandi.json"), "sample", None
 
 
 # --- Live rainfall -----------------------------------------------------------
@@ -252,6 +288,29 @@ def _fetch_rainfall_records(district="Ranchi", state="Jharkhand"):
     return records
 
 
+def _rainfall_records(district):
+    """(records, source, as_of) for `district` — never raises.
+
+    Order: live data.gov.in -> committed snapshot. Returns (None, None, None)
+    when neither has the district.
+    """
+    if DATAGOV_API_KEY:
+        try:
+            records = _fetch_rainfall_records(district)
+            fetched_at = _rainfall_cache.get(district, {}).get("fetched_at") or time.time()
+            return records, "live", _iso_date(fetched_at)
+        except Exception as e:
+            # Log only the error type: a traceback contains the request URL (and api-key).
+            logging.warning("rainfall fetch failed: %s", type(e).__name__)
+
+    snapshot = _load_snapshot(RAINFALL_SNAPSHOT)
+    records = (snapshot or {}).get("districts", {}).get(district)
+    if records is not None:
+        return records, "snapshot", snapshot.get("fetched_at")
+
+    return None, None, None
+
+
 # --- Endpoints -------------------------------------------------------------
 @app.get("/health")
 def health():
@@ -273,9 +332,11 @@ def mandi(crop: str | None = None):
     """Mandi prices for Ranchi + nearby markets. Optional ?crop=maize filter.
 
     Uses live Agmarknet (data.gov.in) prices when DATAGOV_API_KEY is set,
-    falling back to the bundled sample data otherwise or on any failure.
+    falling back to the committed snapshot, then the bundled sample data.
+    The response shape is the same either way (the frontend iterates it);
+    /data-status reports which source was used.
     """
-    data = _live_mandi_data() if DATAGOV_API_KEY else _load_json("mandi.json")
+    data, _, _ = _mandi_data()
     if crop:
         return {"crop": crop, "prices": data.get(crop, [])}
     return data
@@ -285,18 +346,14 @@ def mandi(crop: str | None = None):
 def rainfall(district: str = "Ranchi", days: int = 30):
     """Recent daily rainfall for a Jharkhand district (data.gov.in NRSC data).
 
-    Returns an empty day list when DATAGOV_API_KEY is unset or the live fetch
-    fails, rather than breaking the request.
+    Falls back to the committed snapshot when the live fetch fails or
+    DATAGOV_API_KEY is unset, and to an empty day list (source/as_of null)
+    when the snapshot doesn't have the district either, rather than breaking
+    the request.
     """
-    if not DATAGOV_API_KEY:
-        return {"district": district, "days": []}
-
-    try:
-        records = _fetch_rainfall_records(district)
-    except Exception as e:
-        # Log only the error type: a traceback contains the request URL (and api-key).
-        logging.warning("rainfall fetch failed: %s", type(e).__name__)
-        return {"district": district, "days": []}
+    records, source, as_of = _rainfall_records(district)
+    if records is None:
+        return {"district": district, "days": [], "source": None, "as_of": None}
 
     dated = sorted((r for r in records if r.get("Date")), key=lambda r: r["Date"])
     recent = dated[-days:] if days else dated
@@ -307,6 +364,8 @@ def rainfall(district: str = "Ranchi", days: int = 30):
             {"date": r["Date"], "rain_mm": r.get("Avg_rainfall")}
             for r in recent
         ],
+        "source": source,
+        "as_of": as_of,
     }
 
 
@@ -322,18 +381,16 @@ def sowing_advisory(district: str = "Ranchi"):
     back to the most recent complete window on record and labels the
     response accordingly (`season`, `note`).
 
-    Unlike /mandi and /rainfall, this doesn't fall back to sample data on
-    failure — a sowing recommendation built on missing rainfall data would
-    be misleading rather than merely stale, so it fails loudly instead, but
+    Falls back to the committed rainfall snapshot (real data, just older —
+    `source`/`data_as_of` say so; `as_of` keeps its meaning of the last
+    rainfall date assessed). Unlike /mandi, it never falls back to sample
+    data — a sowing recommendation built on made-up rainfall would be
+    misleading rather than merely stale, so it fails loudly instead, but
     only when there's truly no Kharif-season data to work with at all.
     """
-    if not DATAGOV_API_KEY:
-        raise HTTPException(503, "Live rainfall data is not configured.")
-
-    try:
-        records = _fetch_rainfall_records(district)
-    except Exception:
-        raise HTTPException(503, "Could not fetch live rainfall data.")
+    records, source, data_as_of = _rainfall_records(district)
+    if records is None:
+        raise HTTPException(503, "Could not fetch live rainfall data and no snapshot is available.")
 
     normalized = [
         {"date": r["Date"], "rain_mm": r.get("Avg_rainfall")}
@@ -342,9 +399,21 @@ def sowing_advisory(district: str = "Ranchi"):
     ]
 
     try:
-        return assess_kharif_sowing(normalized)
+        result = assess_kharif_sowing(normalized)
     except NoRainfallDataError:
         raise HTTPException(503, "No Kharif-season rainfall data available for this district.")
+    return {**result, "source": source, "data_as_of": data_as_of}
+
+
+@app.get("/data-status")
+def data_status(district: str = "Ranchi"):
+    """Where /rainfall and /mandi data is currently coming from, and how old it is."""
+    _, rain_source, rain_as_of = _rainfall_records(district)
+    _, mandi_source, mandi_as_of = _mandi_data()
+    return {
+        "rainfall": {"source": rain_source, "as_of": rain_as_of},
+        "mandi": {"source": mandi_source, "as_of": mandi_as_of},
+    }
 
 
 def _prediction_response(key, confidence, info, is_healthy):
