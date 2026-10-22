@@ -53,7 +53,7 @@ gap requires a locally retrained classifier, not a national one.
 |---|---|---|
 | Scope | Pan-India, generic | Ranchi district, block-level |
 | Advisory | Generic weather forecast | Rainfed **sowing-window** decision (sow paddy / switch crop / wait) |
-| Disease model | Broad crop set | Paddy model trained on Ranchi-relevant crop data; other crops use PlantVillage; arhar planned |
+| Disease model | Broad crop set | Paddy model trained on the Paddy Doctor dataset (paddy is Ranchi's main crop); other crops use PlantVillage; arhar planned |
 | Audience | Farmers only | Farmers **+** a district dashboard view for extension staff (ATMA/KVK) |
 
 ---
@@ -177,7 +177,7 @@ pursued for now.
 |---|---|---|---|
 | PlantVillage | Maize, potato and tomato disease classes (38-class CNN) | Hughes & Salathé, [arXiv:1511.08060](https://arxiv.org/abs/1511.08060) | Check source |
 | `trained_plant_disease_model.keras` | The PlantVillage CNN weights served by the backend | **TODO: record where this trained model came from (author / repository / link).** | Check source |
-| Paddy Doctor | Paddy disease model | [Kaggle: Paddy Disease Classification](https://www.kaggle.com/competitions/paddy-disease-classification) | Check source |
+| Paddy Doctor | Paddy disease model | "Paddy Doctor: A Visual Image Dataset for Automated Paddy Disease Classification and Benchmarking", [arXiv:2205.11108](https://arxiv.org/abs/2205.11108) | Check source |
 | Agmarknet (via data.gov.in) | Mandi prices | data.gov.in resource `9ef84268-d588-465a-a308-a864a43d0070` | Check source |
 | District rainfall, NRSC VIC model (via data.gov.in) | Rainfall for the sowing advisor | data.gov.in resource `6c05cd1b-ed59-40c2-bc31-e314f39c6971` | Check source |
 | ATMA Ranchi Strategic Research & Extension Plan, Ch. 9 | Sowing window and alternative crops | [atmaranchi.in](http://www.atmaranchi.in/srep/chapter9.pdf) | Check source |
