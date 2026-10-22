@@ -38,6 +38,19 @@ DATA_DIR = BASE / "data"
 IMG_SIZE = (128, 128)  # must match the PlantVillage model's training input
 PADDY_IMG_SIZE = (224, 224)  # must match the paddy MobileNetV2 model's input
 
+# Selected crop (frontend crop id) -> PlantVillage class-name prefix. Only
+# these crops are diagnosed with the PlantVillage model, restricted to their
+# own classes; paddy has its own model; every other crop is "unsupported".
+PLANTVILLAGE_CROP_PREFIX = {"maize": "Corn_(maize)", "potato": "Potato", "tomato": "Tomato"}
+PLANTVILLAGE_CROP_LABEL = {
+    "maize": {"en": "maize", "hi": "मक्का"},
+    "potato": {"en": "potato", "hi": "आलू"},
+    "tomato": {"en": "tomato", "hi": "टमाटर"},
+}
+# Minimum share of the model's probability that must fall on the selected
+# crop's classes before we diagnose — below it, the photo isn't that crop.
+CROP_MASS_THRESHOLD = 0.5
+
 # Live mandi + rainfall data (data.gov.in). Only read the key from the env —
 # never hardcode it. Absent key means these endpoints stay on sample/empty
 # data.
@@ -421,6 +434,7 @@ def _prediction_response(key, confidence, info, is_healthy):
     low_conf = confidence < 60  # Low-confidence guard: don't give a farmer a confident wrong answer.
 
     return {
+        "status": "ok",
         "class": key,
         "crop": info.get("crop", {"en": "Unknown", "hi": "अज्ञात"}),
         "disease": info.get("disease", {"en": key, "hi": key}),
@@ -436,13 +450,43 @@ def _prediction_response(key, confidence, info, is_healthy):
     }
 
 
+def _classify_within_crop(preds, crop):
+    """(class index, confidence %) restricted to `crop`'s PlantVillage classes.
+
+    `preds` is the model's full 38-class softmax output. Returns None when
+    less than CROP_MASS_THRESHOLD of the probability falls on `crop`'s
+    classes, i.e. the photo doesn't look like that crop. Confidence is
+    renormalized within the crop's classes.
+    """
+    prefix = PLANTVILLAGE_CROP_PREFIX[crop] + "___"
+    idxs = [i for i, name in enumerate(CLASS_NAMES) if name.startswith(prefix)]
+    crop_probs = np.asarray(preds, dtype=np.float64)[idxs]
+    mass = float(crop_probs.sum())
+    if mass < CROP_MASS_THRESHOLD:
+        return None
+    best = int(np.argmax(crop_probs))
+    return idxs[best], round(float(crop_probs[best]) / mass * 100, 1)
+
+
 @app.post("/predict")
 async def predict(file: UploadFile = File(...), crop: str | None = Form(None)):
     """Accept a leaf image, return disease + confidence + bilingual advice.
 
-    ?crop=paddy routes the image through the paddy MobileNetV2 model;
-    any other value (or none) keeps the existing PlantVillage behavior.
+    crop=paddy routes the image through the paddy MobileNetV2 model;
+    maize/potato/tomato use the PlantVillage model restricted to that crop's
+    classes ("wrong_crop" if the photo doesn't look like that crop). Any
+    other crop (or none) is "unsupported" — we never guess a disease from
+    another crop's classes.
     """
+    if crop != "paddy" and crop not in PLANTVILLAGE_CROP_PREFIX:
+        return {
+            "status": "unsupported",
+            "message": {
+                "en": "Disease check is not available for this crop yet.",
+                "hi": "इस फसल के लिए रोग जाँच अभी उपलब्ध नहीं है।",
+            },
+        }
+
     try:
         raw = await file.read()
         img = Image.open(io.BytesIO(raw)).convert("RGB")
@@ -470,8 +514,18 @@ async def predict(file: UploadFile = File(...), crop: str | None = Form(None)):
     interpreter.invoke()
     preds = interpreter.get_tensor(output_details[0]["index"])[0]
 
-    idx = int(np.argmax(preds))
-    confidence = round(float(np.max(preds)) * 100, 1)
+    classified = _classify_within_crop(preds, crop)
+    if classified is None:
+        label = PLANTVILLAGE_CROP_LABEL[crop]
+        return {
+            "status": "wrong_crop",
+            "message": {
+                "en": f"This doesn't look like a {label['en']} leaf — please retake the photo.",
+                "hi": f"यह {label['hi']} की पत्ती नहीं लगती — कृपया फिर से फ़ोटो लें।",
+            },
+        }
+
+    idx, confidence = classified
     key = CLASS_NAMES[idx]
     info = DISEASE_INFO.get(key, {})
     is_healthy = key.endswith("healthy")

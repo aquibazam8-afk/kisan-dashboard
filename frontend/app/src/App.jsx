@@ -91,6 +91,8 @@ const T = {
   mandiSample: { en: "Sample prices — live market data unavailable", hi: "नमूना भाव — लाइव मंडी डेटा उपलब्ध नहीं" },
   mandiSnapshot: (d) => ({ en: `Prices as of ${d}`, hi: `${d} के भाव` }),
   rainSnapshot: (d) => ({ en: `Rainfall data saved on ${d}`, hi: `वर्षा डेटा ${d} को सहेजा गया` }),
+  modelCaveat: { en: "Trained on clear leaf photos; field results may vary.", hi: "साफ़ पत्ती की फ़ोटो पर प्रशिक्षित; खेत में नतीजे अलग हो सकते हैं।" },
+  predictFailed: { en: "Could not check this photo. Please try again.", hi: "इस फ़ोटो की जाँच नहीं हो सकी। कृपया फिर से कोशिश करें।" },
 };
 
 // "2026-10-21" -> "21/10/2026"
@@ -163,6 +165,13 @@ export default function KisanDashboard() {
   const rainNote =
     dataStatus?.rainfall?.source === "snapshot" ? T.rainSnapshot(fmtDay(dataStatus.rainfall.as_of)) : null;
 
+  // Disease result: "ok" (or no status but the usual fields — older backend),
+  // a wrong_crop/unsupported notice, or otherwise a failure notice — never blank.
+  const predOk = pred && !pred.error &&
+    (pred.status === "ok" || (!pred.status && pred.disease && pred.confidence != null));
+  const predNotice = pred && !pred.error && !predOk && pred.status && pred.message;
+  const predFailed = pred && !predOk && !predNotice;
+
   async function onFile(e) {
     const f = e.target.files[0];
     if (!f) return;
@@ -172,6 +181,7 @@ export default function KisanDashboard() {
       fd.append("file", f);
       fd.append("crop", crop);
       const r = await fetch(`${API_BASE}/predict`, { method: "POST", body: fd });
+      if (!r.ok) throw new Error("predict failed");
       setPred(await r.json());
     } catch {
       setPred({ error: true });
@@ -305,8 +315,10 @@ export default function KisanDashboard() {
 
             {busy && <p style={S.analyzing}>{t(T.analyzing)}</p>}
 
-            {pred && pred.error && <p style={S.err}>{t(T.offline)}</p>}
-            {pred && !pred.error && (
+            {predFailed && <div style={S.dataNote}>⚠️ {t(T.predictFailed)}</div>}
+            {/* wrong_crop / unsupported: a notice, never a disease result */}
+            {predNotice && <div style={S.dataNote}>⚠️ {t(pred.message)}</div>}
+            {predOk && (
               <div style={S.result}>
                 <div style={S.resultHead}>
                   <span style={S.resultCrop}>{t(pred.crop)}</span>
@@ -326,6 +338,7 @@ export default function KisanDashboard() {
                   </div>
                 )}
                 {pred.low_confidence && <p style={S.lowConf}>⚠️ {t(pred.note)}</p>}
+                <p style={S.caveat}>{t(T.modelCaveat)}</p>
               </div>
             )}
           </div>
@@ -394,4 +407,5 @@ const S = {
   actionBox: { background: "#f4efe2", borderLeft: `3px solid #6b8e23`, padding: 10, borderRadius: 8, fontSize: 14, lineHeight: 1.5, marginTop: 8 },
   lowConf: { fontSize: 13, color: "#c98a2b", marginTop: 8, fontWeight: 600 },
   dataNote: { background: "#fbf0d5", border: "1px solid #e6cf8f", borderRadius: 8, padding: 8, fontSize: 12, color: "#7a5c1e", margin: "10px 0" },
+  caveat: { fontSize: 11, color: "#9a8d72", marginTop: 10, marginBottom: 0 },
 };
