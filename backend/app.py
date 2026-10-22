@@ -88,7 +88,7 @@ app = FastAPI(title="Kisan Dashboard API", version="0.1")
 # Allow the React dev server to call this API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # dev only; lock down for production
+    allow_origins=["https://kisan-dashboard.vercel.app", "http://localhost:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
