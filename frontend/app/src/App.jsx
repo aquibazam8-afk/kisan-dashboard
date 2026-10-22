@@ -353,8 +353,9 @@ const css = `@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity
 const S = {
   page: { fontFamily: "'Segoe UI', system-ui, sans-serif", background: soil, color: ink, minHeight: "100vh", padding: 16, maxWidth: 640, margin: "0 auto", animation: "rise .4s ease" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: `3px solid ${clay}`, paddingBottom: 10, marginBottom: 12 },
-  h1: { fontSize: 24, margin: 0, fontWeight: 800 },
-  subline: { margin: "2px 0 0", fontSize: 13, color: "#7a6d54", fontWeight: 600 },
+  // Explicit colour: index.css's global h1 colour turns near-white in dark mode.
+  h1: { fontSize: 24, margin: 0, fontWeight: 800, color: "#3a2e1a" },
+  subline: { margin: "2px 0 0", fontSize: 13, color: "#4a3f2c", fontWeight: 600 },
   langBtn: { background: ink, color: soil, border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" },
   offline: { background: "#fbf0d5", border: "1px solid #e6cf8f", borderRadius: 8, padding: 8, fontSize: 12, color: "#7a5c1e", marginBottom: 12 },
   cropRow: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 },
