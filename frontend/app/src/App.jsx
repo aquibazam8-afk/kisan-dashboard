@@ -6,6 +6,7 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 // Fallback data so the UI still renders if the backend isn't running yet.
 const FALLBACK_WEATHER = {
   location: { en: "Ranchi, Jharkhand", hi: "रांची, झारखंड" },
+  source: "sample",
   days: [
     { day: { en: "Sat", hi: "शनि" }, tmax: 31, tmin: 24, rain_mm: 2,  cond: { en: "Partly cloudy", hi: "आंशिक बादल" } },
     { day: { en: "Sun", hi: "रवि" }, tmax: 30, tmin: 24, rain_mm: 12, cond: { en: "Light rain", hi: "हल्की बारिश" } },
@@ -91,6 +92,8 @@ const T = {
   mandiSample: { en: "Sample prices — live market data unavailable", hi: "नमूना भाव — लाइव मंडी डेटा उपलब्ध नहीं" },
   mandiSnapshot: (d) => ({ en: `Prices as of ${d}`, hi: `${d} के भाव` }),
   rainSnapshot: (d) => ({ en: `Rainfall data saved on ${d}`, hi: `वर्षा डेटा ${d} को सहेजा गया` }),
+  weatherSample: { en: "Sample forecast — live weather data unavailable", hi: "नमूना पूर्वानुमान — लाइव मौसम डेटा उपलब्ध नहीं" },
+  weatherCredit: { en: "Forecast: Open-Meteo", hi: "पूर्वानुमान: Open-Meteo" },
   modelCaveat: { en: "Trained on clear leaf photos; field results may vary.", hi: "साफ़ पत्ती की फ़ोटो पर प्रशिक्षित; खेत में नतीजे अलग हो सकते हैं।" },
   predictFailed: { en: "Could not check this photo. Please try again.", hi: "इस फ़ोटो की जाँच नहीं हो सकी। कृपया फिर से कोशिश करें।" },
 };
@@ -162,6 +165,8 @@ export default function KisanDashboard() {
     mandiSource === "sample" ? T.mandiSample :
     mandiSource === "snapshot" ? T.mandiSnapshot(fmtDay(dataStatus.mandi.as_of)) :
     null;
+  // /weather marks its own source, so this reflects the forecast actually shown.
+  const weatherSource = weather.source;
   const rainNote =
     dataStatus?.rainfall?.source === "snapshot" ? T.rainSnapshot(fmtDay(dataStatus.rainfall.as_of)) : null;
 
@@ -228,17 +233,25 @@ export default function KisanDashboard() {
 
       <div style={S.panel}>
         {tab === "weather" && (
-          <div style={S.weekRow}>
-            {weather.days.map((w, i) => (
-              <div key={i} style={S.day}>
-                <div style={S.dayName}>{t(w.day)}</div>
-                <div style={S.temp}>{w.tmax}°</div>
-                <div style={S.tempMin}>{w.tmin}°</div>
-                <div style={{ ...S.rain, opacity: w.rain_mm > 0 ? 1 : 0.3 }}>
-                  {w.rain_mm > 0 ? `${w.rain_mm}mm` : "—"}
+          <div>
+            {weatherSource === "sample" && <div style={S.dataNote}>{t(T.weatherSample)}</div>}
+            <div style={S.weekRow}>
+              {weather.days.map((w, i) => (
+                <div key={i} style={S.day}>
+                  <div style={S.dayName}>{t(w.day)}</div>
+                  <div style={S.temp}>{w.tmax}°</div>
+                  <div style={S.tempMin}>{w.tmin}°</div>
+                  <div style={{ ...S.rain, opacity: w.rain_mm > 0 ? 1 : 0.3 }}>
+                    {w.rain_mm > 0 ? `${w.rain_mm}mm` : "—"}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            {weatherSource === "live" && (
+              <p style={S.caveat}>
+                <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style={S.creditLink}>{t(T.weatherCredit)}</a>
+              </p>
+            )}
           </div>
         )}
 
@@ -409,4 +422,5 @@ const S = {
   lowConf: { fontSize: 13, color: "#c98a2b", marginTop: 8, fontWeight: 600 },
   dataNote: { background: "#fbf0d5", border: "1px solid #e6cf8f", borderRadius: 8, padding: 8, fontSize: 12, color: "#7a5c1e", margin: "10px 0" },
   caveat: { fontSize: 11, color: "#9a8d72", marginTop: 10, marginBottom: 0 },
+  creditLink: { color: "inherit" },
 };

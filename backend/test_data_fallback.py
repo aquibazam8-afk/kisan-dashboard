@@ -1,7 +1,8 @@
 """
 Tests for the live -> snapshot -> sample/empty fallback order in app.py's
-/rainfall, /sowing-advisory, /mandi and /data-status endpoints. No network:
-the live fetch functions are patched, and snapshots go to a temp dir.
+/rainfall, /sowing-advisory, /mandi and /data-status endpoints, and the
+live -> sample fallback of /weather. No network: the live fetch functions
+(or requests.get) are patched, and snapshots go to a temp dir.
 
 Run: python -m unittest test_data_fallback -v
 """
@@ -36,6 +37,33 @@ SNAPSHOT_AGMARKNET_RECORDS = [
 ]
 
 
+# Real Open-Meteo response for Ranchi, captured 2026-10-22 with the same
+# query parameters _fetch_open_meteo_days sends.
+OPEN_METEO_RESPONSE = {
+    "latitude": 23.30404, "longitude": 85.27807, "generationtime_ms": 5.735039710998535,
+    "utc_offset_seconds": 19800, "timezone": "Asia/Kolkata", "timezone_abbreviation": "GMT+5:30",
+    "elevation": 650.0,
+    "daily_units": {"time": "iso8601", "temperature_2m_max": "°C", "temperature_2m_min": "°C",
+                    "precipitation_sum": "mm", "weathercode": "wmo code"},
+    "daily": {
+        "time": ["2026-10-22", "2026-10-23", "2026-10-24", "2026-10-25",
+                 "2026-10-26", "2026-10-27", "2026-10-28"],
+        "temperature_2m_max": [26.8, 26.6, 26.2, 26.5, 26.9, 26.7, 22.6],
+        "temperature_2m_min": [17.1, 16.9, 17.0, 16.4, 17.2, 16.5, 19.7],
+        "precipitation_sum": [0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 27.00],
+        "weathercode": [3, 2, 0, 0, 1, 3, 80],
+    },
+}
+
+
+def _open_meteo_get(payload):
+    """A requests.get stand-in that returns `payload` as the JSON body."""
+    resp = mock.Mock()
+    resp.json.return_value = payload
+    resp.raise_for_status.return_value = None
+    return mock.Mock(return_value=resp)
+
+
 def _fail(*args, **kwargs):
     raise ConnectionError("unreachable")
 
@@ -51,9 +79,11 @@ class FallbackTestCase(unittest.TestCase):
             mock.patch.object(app, "MANDI_SNAPSHOT", self.mandi_snap),
             mock.patch.dict(app._rainfall_cache, clear=True),
             mock.patch.dict(app._mandi_cache, {"records": None, "fetched_at": 0.0}),
+            mock.patch.dict(app._weather_cache, {"days": None, "fetched_at": 0.0}),
             # Never touch the network: live is unreachable unless a test says otherwise.
             mock.patch.object(app, "_fetch_rainfall_records", _fail),
             mock.patch.object(app, "_fetch_agmarknet_records", _fail),
+            mock.patch.object(app.requests, "get", _fail),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -193,14 +223,104 @@ class MandiFallbackTests(FallbackTestCase):
         )
 
 
+class WeatherTests(FallbackTestCase):
+    DAY_KEYS = {"day", "tmax", "tmin", "rain_mm", "cond"}
+
+    def live_weather(self, payload):
+        get = _open_meteo_get(payload)
+        p = mock.patch.object(app.requests, "get", get)
+        p.start()
+        self.addCleanup(p.stop)
+        return get
+
+    def assert_weather_shape(self, resp):
+        self.assertEqual(set(resp), {"location", "updated", "days", "source"})
+        self.assertEqual(set(resp["location"]), {"en", "hi"})
+        self.assertEqual(len(resp["days"]), 7)
+        for d in resp["days"]:
+            self.assertEqual(set(d), self.DAY_KEYS)
+            self.assertEqual(set(d["day"]), {"en", "hi"})
+            self.assertEqual(set(d["cond"]), {"en", "hi"})
+            for k in ("tmax", "tmin", "rain_mm"):
+                self.assertIsInstance(d[k], (int, float))
+
+    def test_live_maps_open_meteo_response(self):
+        get = self.live_weather(OPEN_METEO_RESPONSE)
+        resp = app.weather()
+        self.assertEqual(resp["source"], "live")
+        self.assertEqual(resp["updated"], date.today().isoformat())
+        self.assertEqual(get.call_args.kwargs["timeout"], 10)
+        # 2026-10-22 is a Thursday.
+        self.assertEqual(resp["days"][0], {
+            "day": {"en": "Thu", "hi": "गुरु"}, "tmax": 27, "tmin": 17, "rain_mm": 0.0,
+            "cond": {"en": "Cloudy", "hi": "बादल"},
+        })
+        self.assertEqual(resp["days"][6], {
+            "day": {"en": "Wed", "hi": "बुध"}, "tmax": 23, "tmin": 20, "rain_mm": 27.0,
+            "cond": {"en": "Showers", "hi": "बौछारें"},
+        })
+        self.assertEqual(
+            [d["cond"]["en"] for d in resp["days"]],
+            ["Cloudy", "Partly cloudy", "Sunny", "Sunny", "Sunny", "Cloudy", "Showers"],
+        )
+        self.assertEqual(app.data_status()["weather"],
+                         {"source": "live", "as_of": date.today().isoformat()})
+
+    def test_live_is_cached(self):
+        get = self.live_weather(OPEN_METEO_RESPONSE)
+        app.weather()
+        app.weather()
+        app.data_status()
+        self.assertEqual(get.call_count, 1)
+
+    def test_failed_fetch_serves_sample(self):
+        resp = app.weather()  # requests.get raises (see setUp)
+        sample = app._load_json("weather.json")
+        self.assertEqual(resp, {**sample, "source": "sample"})
+        self.assertEqual(app.data_status()["weather"], {"source": "sample", "as_of": None})
+
+    def test_malformed_response_serves_sample(self):
+        self.live_weather({"error": True, "reason": "bad request"})
+        self.assertEqual(app.weather()["source"], "sample")
+
+    def test_null_values_serve_sample(self):
+        payload = json.loads(json.dumps(OPEN_METEO_RESPONSE))
+        payload["daily"]["temperature_2m_max"][3] = None
+        self.live_weather(payload)
+        self.assertEqual(app.weather()["source"], "sample")
+
+    def test_failure_is_not_cached(self):
+        self.assertEqual(app.weather()["source"], "sample")
+        self.live_weather(OPEN_METEO_RESPONSE)
+        self.assertEqual(app.weather()["source"], "live")
+
+    def test_shape_unchanged_across_sources(self):
+        """Live and sample responses have identical keys, so the frontend
+        renders either without changes."""
+        sample = app.weather()
+        self.live_weather(OPEN_METEO_RESPONSE)
+        live = app.weather()
+        self.assert_weather_shape(sample)
+        self.assert_weather_shape(live)
+        self.assertEqual(live["location"], sample["location"])
+
+    def test_wmo_mapping_uses_only_existing_texts(self):
+        sample_conds = {json.dumps(d["cond"], sort_keys=True)
+                        for d in app._load_json("weather.json")["days"]}
+        for code in list(range(0, 100)):
+            cond = app._condition_for_wmo(code)
+            self.assertIn(json.dumps(cond, sort_keys=True), sample_conds, code)
+
+
 class DataStatusTests(FallbackTestCase):
-    def test_reports_both_sources(self):
+    def test_reports_all_sources(self):
         self.live_rainfall(_fail)
         self.live_mandi(_fail)
         self.write_rain_snapshot({"Ranchi": _rain_records()}, fetched_at="2026-10-02")
         self.assertEqual(app.data_status(), {
             "rainfall": {"source": "snapshot", "as_of": "2026-10-02"},
             "mandi": {"source": "sample", "as_of": None},
+            "weather": {"source": "sample", "as_of": None},
         })
 
 

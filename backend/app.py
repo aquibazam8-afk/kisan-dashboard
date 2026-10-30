@@ -60,6 +60,12 @@ RAINFALL_URL = "https://api.data.gov.in/resource/6c05cd1b-ed59-40c2-bc31-e314f39
 MANDI_CACHE_TTL = 3600  # seconds
 RAINFALL_CACHE_TTL = 6 * 3600  # rainfall is published daily, so cache longer
 
+# Live 7-day forecast (Open-Meteo, no key needed). Falls back to the bundled
+# sample data (data/weather.json) when the fetch fails.
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+RANCHI_LAT, RANCHI_LON = 23.34, 85.31
+WEATHER_CACHE_TTL = 30 * 60  # seconds
+
 # Snapshots of the live data, written by refresh_snapshots.py on a machine
 # that can reach api.data.gov.in (Render's servers can't) and committed.
 # Served when the live fetch fails, ahead of the bundled sample data.
@@ -324,6 +330,110 @@ def _rainfall_records(district):
     return None, None, None
 
 
+# --- Live weather forecast ---------------------------------------------------
+_WEEKDAYS = [  # date.weekday() order: Monday first
+    {"en": "Mon", "hi": "सोम"},
+    {"en": "Tue", "hi": "मंगल"},
+    {"en": "Wed", "hi": "बुध"},
+    {"en": "Thu", "hi": "गुरु"},
+    {"en": "Fri", "hi": "शुक्र"},
+    {"en": "Sat", "hi": "शनि"},
+    {"en": "Sun", "hi": "रवि"},
+]
+
+# The bilingual condition texts already used by data/weather.json.
+_COND = {
+    "sunny": {"en": "Sunny", "hi": "धूप"},
+    "partly": {"en": "Partly cloudy", "hi": "आंशिक बादल"},
+    "cloudy": {"en": "Cloudy", "hi": "बादल"},
+    "light_rain": {"en": "Light rain", "hi": "हल्की बारिश"},
+    "rain": {"en": "Rain", "hi": "बारिश"},
+    "showers": {"en": "Showers", "hi": "बौछारें"},
+}
+
+
+def _condition_for_wmo(code):
+    """Bilingual condition text for a WMO weather code (Open-Meteo `weathercode`).
+
+    Only the six existing texts are used, so some codes are approximated:
+    fog -> Cloudy, thunderstorm/snow -> Rain.
+    """
+    if code in (0, 1):
+        return _COND["sunny"]
+    if code == 2:
+        return _COND["partly"]
+    if code in (51, 53, 55, 56, 57, 61):  # drizzle, slight rain
+        return _COND["light_rain"]
+    if code in (80, 81, 82):
+        return _COND["showers"]
+    if code in (63, 65, 66, 67) or 71 <= code <= 77 or code in (85, 86) or code >= 95:
+        return _COND["rain"]
+    return _COND["cloudy"]  # 3 overcast, 45/48 fog, anything unknown
+
+
+_weather_cache = {"days": None, "fetched_at": 0.0}
+
+
+def _fetch_open_meteo_days():
+    """7 weather.json-shaped days from Open-Meteo, cached for WEATHER_CACHE_TTL."""
+    now = time.time()
+    if _weather_cache["days"] is not None and (now - _weather_cache["fetched_at"]) < WEATHER_CACHE_TTL:
+        return _weather_cache["days"]
+
+    resp = requests.get(
+        OPEN_METEO_URL,
+        params={
+            "latitude": RANCHI_LAT,
+            "longitude": RANCHI_LON,
+            "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,weathercode",
+            "timezone": "Asia/Kolkata",
+            "forecast_days": 7,
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
+    daily = resp.json()["daily"]
+
+    days = []
+    for iso, tmax, tmin, rain, code in zip(
+        daily["time"],
+        daily["temperature_2m_max"],
+        daily["temperature_2m_min"],
+        daily["precipitation_sum"],
+        daily["weathercode"],
+    ):
+        if None in (tmax, tmin, rain, code):
+            raise ValueError(f"incomplete forecast for {iso}")
+        days.append({
+            "day": _WEEKDAYS[date.fromisoformat(iso).weekday()],
+            "tmax": round(tmax),
+            "tmin": round(tmin),
+            "rain_mm": round(rain, 1),
+            "cond": _condition_for_wmo(int(code)),
+        })
+    if not days:
+        raise ValueError("empty forecast")
+
+    _weather_cache["days"] = days
+    _weather_cache["fetched_at"] = now
+    return days
+
+
+def _weather_data():
+    """(weather.json-shaped dict, source, as_of) — never raises.
+
+    Order: live Open-Meteo -> bundled sample data.
+    """
+    try:
+        days = _fetch_open_meteo_days()
+        as_of = _iso_date(_weather_cache["fetched_at"] or time.time())
+        sample = _load_json("weather.json")
+        return {"location": sample["location"], "updated": as_of, "days": days}, "live", as_of
+    except Exception as e:
+        logging.warning("weather fetch failed: %s", type(e).__name__)
+    return _load_json("weather.json"), "sample", None
+
+
 # --- Endpoints -------------------------------------------------------------
 @app.get("/health")
 def health():
@@ -336,8 +446,14 @@ def health():
 
 @app.get("/weather")
 def weather():
-    """7-day Ranchi forecast (IMD-shaped sample data; swap to live API later)."""
-    return _load_json("weather.json")
+    """7-day Ranchi forecast from Open-Meteo.
+
+    Falls back to the bundled sample data (data/weather.json) when the live
+    fetch fails. The day entries have the same shape either way; `source`
+    ("live" | "sample") tells the frontend which one it got.
+    """
+    data, source, _ = _weather_data()
+    return {**data, "source": source}
 
 
 @app.get("/mandi")
@@ -420,12 +536,14 @@ def sowing_advisory(district: str = "Ranchi"):
 
 @app.get("/data-status")
 def data_status(district: str = "Ranchi"):
-    """Where /rainfall and /mandi data is currently coming from, and how old it is."""
+    """Where /rainfall, /mandi and /weather data is currently coming from, and how old it is."""
     _, rain_source, rain_as_of = _rainfall_records(district)
     _, mandi_source, mandi_as_of = _mandi_data()
+    _, weather_source, weather_as_of = _weather_data()
     return {
         "rainfall": {"source": rain_source, "as_of": rain_as_of},
         "mandi": {"source": mandi_source, "as_of": mandi_as_of},
+        "weather": {"source": weather_source, "as_of": weather_as_of},
     }
 
 
