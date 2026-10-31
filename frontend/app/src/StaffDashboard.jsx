@@ -32,6 +32,8 @@ const STATUS_LABEL = {
   switch: { en: "SWITCH", hi: "बदलें" },
 };
 const STATUS_COLOR = { sow: "#2f7d4f", wait: "#c98a2b", switch: "#b23b3b" };
+// current_season: false — a past window's result, shown in a neutral colour.
+const PAST_STATUS_COLOR = "#7d7360";
 const TREND_MARK = { up: "▲", down: "▼", flat: "—" };
 const TREND_COLOR = { up: "#2f7d4f", down: "#b23b3b", flat: "#8a7f6b" };
 
@@ -246,9 +248,26 @@ export default function StaffDashboard() {
 
           {!advisoryLoading && !advisoryError && advisory && (
             <>
-              <div style={{ ...S.statusBadge, background: STATUS_COLOR[advisory.status] }}>
-                {STATUS_LABEL[advisory.status].en} · {STATUS_LABEL[advisory.status].hi}
+              <div style={S.cropLabel}>
+                Paddy sowing advice <span style={S.hiText}>धान बुआई सलाह</span>
               </div>
+              {advisory.current_season === false ? (
+                <>
+                  <div style={{ ...S.statusBadge, background: PAST_STATUS_COLOR }}>
+                    Kharif {advisory.season} result: {STATUS_LABEL[advisory.status].en}
+                    {" · "}खरीफ {advisory.season} परिणाम: {STATUS_LABEL[advisory.status].hi}
+                  </div>
+                  <div style={S.warnNote}>
+                    Not the current season — for reference only
+                    <br />
+                    <span style={S.hiText}>यह मौजूदा सीज़न नहीं है — केवल संदर्भ के लिए</span>
+                  </div>
+                </>
+              ) : (
+                <div style={{ ...S.statusBadge, background: STATUS_COLOR[advisory.status] }}>
+                  {STATUS_LABEL[advisory.status].en} · {STATUS_LABEL[advisory.status].hi}
+                </div>
+              )}
               <p style={S.reasonEn}>{advisory.reasoning.en}</p>
               <p style={S.reasonHi}>{advisory.reasoning.hi}</p>
               {advisory.alternative_crop && (
@@ -256,7 +275,8 @@ export default function StaffDashboard() {
                   Alternative crop: <strong>{advisory.alternative_crop.en}</strong> / {advisory.alternative_crop.hi}
                 </div>
               )}
-              {advisory.wait_window_days != null && (
+              {/* "Reassess in N days" is an instruction for now — not for a past season. */}
+              {advisory.wait_window_days != null && advisory.current_season !== false && (
                 <div style={S.meta}>
                   Reassess in {advisory.wait_window_days} days / {advisory.wait_window_days} दिन बाद फिर जाँचें
                 </div>
@@ -398,6 +418,7 @@ const S = {
   dim: { fontSize: 11, fontWeight: 500, color: "#8a90a3" },
   badge: { display: "inline-block", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 4 },
   footnote: { fontSize: 10, color: "#9aa0b0", marginTop: 8, textAlign: "right" },
+  cropLabel: { fontSize: 12, fontWeight: 700, color: "#4a5164", marginBottom: 6 },
   statusBadge: { display: "inline-block", color: "#fff", fontSize: 13, fontWeight: 900, padding: "5px 12px", borderRadius: 5, marginBottom: 10, letterSpacing: "0.5px" },
   reasonEn: { fontSize: 12, lineHeight: 1.5, margin: "0 0 6px", color: "#2a3142" },
   reasonHi: { fontSize: 12, lineHeight: 1.5, margin: "0 0 8px", color: "#6b7285" },

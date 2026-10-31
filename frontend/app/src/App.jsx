@@ -77,6 +77,9 @@ const T = {
   offline: { en: "Backend offline — showing sample data. Disease check needs the server running.", hi: "सर्वर बंद — नमूना डेटा दिख रहा। रोग जाँच हेतु सर्वर चालू करें।" },
   advisoryLoading: { en: "Checking this season's rainfall…", hi: "इस सीज़न की बारिश जाँची जा रही है…" },
   advisoryError: { en: "Could not load the sowing advisory. Make sure the server is running.", hi: "बुआई सलाह लोड नहीं हो सकी। सर्वर चालू है या नहीं जाँचें।" },
+  paddyAdvice: { en: "Paddy sowing advice", hi: "धान बुआई सलाह" },
+  pastResult: (season, v) => ({ en: `Kharif ${season} result: ${v.en}`, hi: `खरीफ ${season} परिणाम: ${v.hi}` }),
+  referenceOnly: { en: "Not the current season — for reference only", hi: "यह मौजूदा सीज़न नहीं है — केवल संदर्भ के लिए" },
   retry: { en: "Retry", hi: "फिर कोशिश करें" },
   mandiSample: { en: "Sample prices — live market data unavailable", hi: "नमूना भाव — लाइव मंडी डेटा उपलब्ध नहीं" },
   mandiSnapshot: (d) => ({ en: `Prices as of ${d}`, hi: `${d} के भाव` }),
@@ -108,6 +111,14 @@ const ADVISORY_STATUS_LABEL = {
 };
 const ADVISORY_STATUS_ICON = { sow: "✅", wait: "⏳", switch: "🔁" };
 const ADVISORY_STATUS_COLOR = { sow: "#2f7d4f", wait: "#c98a2b", switch: "#b23b3b" };
+// Verdict for a past season's window (current_season: false): stated as that
+// window's result, not as something to do now, in a neutral colour.
+const ADVISORY_PAST_VERDICT = {
+  sow:    { en: "Sow", hi: "बोएं" },
+  wait:   { en: "Wait", hi: "प्रतीक्षा" },
+  switch: { en: "Switch crop", hi: "फसल बदलें" },
+};
+const ADVISORY_PAST_COLOR = "#8a7f6b";
 
 export default function KisanDashboard() {
   const [lang, setLang] = useState("hi");
@@ -285,10 +296,20 @@ export default function KisanDashboard() {
 
             {!advisoryLoading && !advisoryError && advisory && (
               <div>
-                <div style={{ ...S.advisoryHead, color: ADVISORY_STATUS_COLOR[advisory.status] }}>
-                  <span style={S.advisoryIcon}>{ADVISORY_STATUS_ICON[advisory.status]}</span>
-                  {t(ADVISORY_STATUS_LABEL[advisory.status])}
-                </div>
+                <div style={S.advisoryCrop}>{t(T.paddyAdvice)}</div>
+                {advisory.current_season === false ? (
+                  <>
+                    <div style={{ ...S.advisoryHead, color: ADVISORY_PAST_COLOR }}>
+                      {t(T.pastResult(advisory.season, ADVISORY_PAST_VERDICT[advisory.status]))}
+                    </div>
+                    <div style={S.dataNote}>{t(T.referenceOnly)}</div>
+                  </>
+                ) : (
+                  <div style={{ ...S.advisoryHead, color: ADVISORY_STATUS_COLOR[advisory.status] }}>
+                    <span style={S.advisoryIcon}>{ADVISORY_STATUS_ICON[advisory.status]}</span>
+                    {t(ADVISORY_STATUS_LABEL[advisory.status])}
+                  </div>
+                )}
                 <p style={S.advisoryReasoning}>{t(advisory.reasoning)}</p>
                 {advisory.note && (
                   <p style={S.lowConf}>⚠️ {t(advisory.note)}</p>
@@ -399,6 +420,7 @@ const S = {
   v: { fontSize: 14, fontWeight: 700, textAlign: "right" },
   tip: { fontSize: 14, marginTop: 10, marginBottom: 0, lineHeight: 1.5, color: "#4a3f2c", background: "#f4efe2", padding: 10, borderRadius: 8, borderLeft: `3px solid #6b8e23` },
   advisoryBox: {},
+  advisoryCrop: { fontSize: 13, fontWeight: 700, color: "#8a7f6b", marginBottom: 6 },
   advisoryHead: { display: "flex", alignItems: "center", gap: 8, fontSize: 22, fontWeight: 900 },
   advisoryIcon: { fontSize: 24 },
   advisoryReasoning: { fontSize: 14, lineHeight: 1.6, marginTop: 12, color: "#4a3f2c" },
