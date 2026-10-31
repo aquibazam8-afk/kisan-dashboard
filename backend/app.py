@@ -60,10 +60,11 @@ RAINFALL_URL = "https://api.data.gov.in/resource/6c05cd1b-ed59-40c2-bc31-e314f39
 MANDI_CACHE_TTL = 3600  # seconds
 RAINFALL_CACHE_TTL = 6 * 3600  # rainfall is published daily, so cache longer
 
-# Live 7-day forecast (Open-Meteo, no key needed). Falls back to the bundled
-# sample data (data/weather.json) when the fetch fails.
+# Live 7-day forecast (Open-Meteo, no key needed). When the fetch fails
+# /weather reports "unavailable" with no days — never an invented forecast.
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 RANCHI_LAT, RANCHI_LON = 23.34, 85.31
+WEATHER_LOCATION = {"en": "Ranchi, Jharkhand", "hi": "रांची, झारखंड"}
 WEATHER_CACHE_TTL = 30 * 60  # seconds
 
 # Snapshots of the live data, written by refresh_snapshots.py on a machine
@@ -341,7 +342,7 @@ _WEEKDAYS = [  # date.weekday() order: Monday first
     {"en": "Sun", "hi": "रवि"},
 ]
 
-# The bilingual condition texts already used by data/weather.json.
+# The bilingual condition texts shown on the day cards.
 _COND = {
     "sunny": {"en": "Sunny", "hi": "धूप"},
     "partly": {"en": "Partly cloudy", "hi": "आंशिक बादल"},
@@ -375,7 +376,7 @@ _weather_cache = {"days": None, "fetched_at": 0.0}
 
 
 def _fetch_open_meteo_days():
-    """7 weather.json-shaped days from Open-Meteo, cached for WEATHER_CACHE_TTL."""
+    """7 day dicts (day, tmax, tmin, rain_mm, cond) from Open-Meteo, cached for WEATHER_CACHE_TTL."""
     now = time.time()
     if _weather_cache["days"] is not None and (now - _weather_cache["fetched_at"]) < WEATHER_CACHE_TTL:
         return _weather_cache["days"]
@@ -420,15 +421,14 @@ def _fetch_open_meteo_days():
 
 
 def _weather_data():
-    """(weather.json-shaped dict, source, as_of) — never raises.
+    """(dict with location/updated/days, source, as_of) — never raises.
 
-    Order: live Open-Meteo -> bundled sample data.
+    Live Open-Meteo, or "unavailable" with no days when the fetch fails.
     """
     try:
         days = _fetch_open_meteo_days()
         as_of = _iso_date(_weather_cache["fetched_at"] or time.time())
-        sample = _load_json("weather.json")
-        return {"location": sample["location"], "updated": as_of, "days": days}, "live", as_of
+        return {"location": WEATHER_LOCATION, "updated": as_of, "days": days}, "live", as_of
     except Exception as e:
         resp = getattr(e, "response", None)
         # `is not None`, not truthiness: a Response is falsy for 4xx/5xx.
@@ -439,7 +439,7 @@ def _weather_data():
             )
         else:
             logging.warning("weather fetch failed: %s", type(e).__name__)
-    return _load_json("weather.json"), "sample", None
+    return {"location": WEATHER_LOCATION, "updated": None, "days": []}, "unavailable", None
 
 
 # --- Endpoints -------------------------------------------------------------
@@ -456,9 +456,8 @@ def health():
 def weather():
     """7-day Ranchi forecast from Open-Meteo.
 
-    Falls back to the bundled sample data (data/weather.json) when the live
-    fetch fails. The day entries have the same shape either way; `source`
-    ("live" | "sample") tells the frontend which one it got.
+    When the live fetch fails, `source` is "unavailable" and `days` is empty;
+    the keys are the same either way. No sample forecast is ever served.
     """
     data, source, _ = _weather_data()
     return {**data, "source": source}

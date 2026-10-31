@@ -4,19 +4,8 @@ import React, { useState, useEffect, useRef } from "react";
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 // Fallback data so the UI still renders if the backend isn't running yet.
-const FALLBACK_WEATHER = {
-  location: { en: "Ranchi, Jharkhand", hi: "रांची, झारखंड" },
-  source: "sample",
-  days: [
-    { day: { en: "Sat", hi: "शनि" }, tmax: 31, tmin: 24, rain_mm: 2,  cond: { en: "Partly cloudy", hi: "आंशिक बादल" } },
-    { day: { en: "Sun", hi: "रवि" }, tmax: 30, tmin: 24, rain_mm: 12, cond: { en: "Light rain", hi: "हल्की बारिश" } },
-    { day: { en: "Mon", hi: "सोम" }, tmax: 29, tmin: 23, rain_mm: 24, cond: { en: "Rain", hi: "बारिश" } },
-    { day: { en: "Tue", hi: "मंगल" }, tmax: 30, tmin: 23, rain_mm: 8,  cond: { en: "Showers", hi: "बौछारें" } },
-    { day: { en: "Wed", hi: "बुध" }, tmax: 32, tmin: 24, rain_mm: 0,  cond: { en: "Sunny", hi: "धूप" } },
-    { day: { en: "Thu", hi: "गुरु" }, tmax: 33, tmin: 25, rain_mm: 0,  cond: { en: "Sunny", hi: "धूप" } },
-    { day: { en: "Fri", hi: "शुक्र" }, tmax: 31, tmin: 24, rain_mm: 6, cond: { en: "Cloudy", hi: "बादल" } },
-  ],
-};
+// Weather has none: a forecast is never invented, the tab says it's unavailable.
+const WEATHER_UNAVAILABLE = { source: "unavailable", days: [] };
 const FALLBACK_MANDI = {
   paddy:       [{ mandi: { en: "Ranchi (Pandra)", hi: "रांची (पंडरा)" }, price: 2180, trend: "up" },
                 { mandi: { en: "Ramgarh",         hi: "रामगढ़" },         price: 2150, trend: "flat" },
@@ -92,7 +81,7 @@ const T = {
   mandiSample: { en: "Sample prices — live market data unavailable", hi: "नमूना भाव — लाइव मंडी डेटा उपलब्ध नहीं" },
   mandiSnapshot: (d) => ({ en: `Prices as of ${d}`, hi: `${d} के भाव` }),
   rainSnapshot: (d) => ({ en: `Rainfall data saved on ${d}`, hi: `वर्षा डेटा ${d} को सहेजा गया` }),
-  weatherSample: { en: "Sample forecast — live weather data unavailable", hi: "नमूना पूर्वानुमान — लाइव मौसम डेटा उपलब्ध नहीं" },
+  weatherUnavailable: { en: "Weather forecast unavailable right now", hi: "मौसम पूर्वानुमान अभी उपलब्ध नहीं है" },
   weatherCredit: { en: "Forecast: Open-Meteo", hi: "पूर्वानुमान: Open-Meteo" },
   modelCaveat: { en: "Trained on clear leaf photos; field results may vary.", hi: "साफ़ पत्ती की फ़ोटो पर प्रशिक्षित; खेत में नतीजे अलग हो सकते हैं।" },
   predictFailed: { en: "Could not check this photo. Please try again.", hi: "इस फ़ोटो की जाँच नहीं हो सकी। कृपया फिर से कोशिश करें।" },
@@ -123,7 +112,7 @@ export default function KisanDashboard() {
   const [lang, setLang] = useState("hi");
   const [crop, setCrop] = useState("paddy");
   const [tab, setTab] = useState("weather");
-  const [weather, setWeather] = useState(FALLBACK_WEATHER);
+  const [weather, setWeather] = useState(null); // null while loading
   const [mandi, setMandi] = useState(FALLBACK_MANDI);
   const [online, setOnline] = useState(false);
   const [pred, setPred] = useState(null);
@@ -136,7 +125,10 @@ export default function KisanDashboard() {
   const t = (o) => (o ? o[lang] : "");
 
   useEffect(() => {
-    fetch(`${API_BASE}/weather`).then(r => r.json()).then(d => { setWeather(d); setOnline(true); }).catch(() => {});
+    fetch(`${API_BASE}/weather`)
+      .then(r => { if (!r.ok) throw new Error("weather fetch failed"); return r.json(); })
+      .then(d => { setWeather(d); setOnline(true); })
+      .catch(() => setWeather(WEATHER_UNAVAILABLE));
     fetch(`${API_BASE}/mandi`).then(r => r.json()).then(setMandi).catch(() => {});
     // Where mandi/rainfall data came from (live/snapshot/sample). On failure
     // dataStatus stays null and no source notes are shown.
@@ -165,8 +157,9 @@ export default function KisanDashboard() {
     mandiSource === "sample" ? T.mandiSample :
     mandiSource === "snapshot" ? T.mandiSnapshot(fmtDay(dataStatus.mandi.as_of)) :
     null;
-  // /weather marks its own source, so this reflects the forecast actually shown.
-  const weatherSource = weather.source;
+  // /weather marks its own source. Day cards are shown only for a live
+  // forecast; anything else (incl. an older backend's "sample") is unavailable.
+  const weatherLive = weather?.source === "live";
   const rainNote =
     dataStatus?.rainfall?.source === "snapshot" ? T.rainSnapshot(fmtDay(dataStatus.rainfall.as_of)) : null;
 
@@ -234,23 +227,25 @@ export default function KisanDashboard() {
       <div style={S.panel}>
         {tab === "weather" && (
           <div>
-            {weatherSource === "sample" && <div style={S.dataNote}>{t(T.weatherSample)}</div>}
-            <div style={S.weekRow}>
-              {weather.days.map((w, i) => (
-                <div key={i} style={S.day}>
-                  <div style={S.dayName}>{t(w.day)}</div>
-                  <div style={S.temp}>{w.tmax}°</div>
-                  <div style={S.tempMin}>{w.tmin}°</div>
-                  <div style={{ ...S.rain, opacity: w.rain_mm > 0 ? 1 : 0.3 }}>
-                    {w.rain_mm > 0 ? `${w.rain_mm}mm` : "—"}
-                  </div>
+            {weather && !weatherLive && <div style={S.dataNote}>{t(T.weatherUnavailable)}</div>}
+            {weatherLive && (
+              <>
+                <div style={S.weekRow}>
+                  {weather.days.map((w, i) => (
+                    <div key={i} style={S.day}>
+                      <div style={S.dayName}>{t(w.day)}</div>
+                      <div style={S.temp}>{w.tmax}°</div>
+                      <div style={S.tempMin}>{w.tmin}°</div>
+                      <div style={{ ...S.rain, opacity: w.rain_mm > 0 ? 1 : 0.3 }}>
+                        {w.rain_mm > 0 ? `${w.rain_mm}mm` : "—"}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            {weatherSource === "live" && (
-              <p style={S.caveat}>
-                <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style={S.creditLink}>{t(T.weatherCredit)}</a>
-              </p>
+                <p style={S.caveat}>
+                  <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style={S.creditLink}>{t(T.weatherCredit)}</a>
+                </p>
+              </>
             )}
           </div>
         )}

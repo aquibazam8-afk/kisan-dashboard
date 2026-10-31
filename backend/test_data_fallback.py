@@ -1,7 +1,7 @@
 """
 Tests for the live -> snapshot -> sample/empty fallback order in app.py's
 /rainfall, /sowing-advisory, /mandi and /data-status endpoints, and the
-live -> sample fallback of /weather. No network: the live fetch functions
+live -> unavailable fallback of /weather. No network: the live fetch functions
 (or requests.get) are patched, and snapshots go to a temp dir.
 
 Run: python -m unittest test_data_fallback -v
@@ -273,43 +273,44 @@ class WeatherTests(FallbackTestCase):
         app.data_status()
         self.assertEqual(get.call_count, 1)
 
-    def test_failed_fetch_serves_sample(self):
+    def test_failed_fetch_is_unavailable(self):
         resp = app.weather()  # requests.get raises (see setUp)
-        sample = app._load_json("weather.json")
-        self.assertEqual(resp, {**sample, "source": "sample"})
-        self.assertEqual(app.data_status()["weather"], {"source": "sample", "as_of": None})
+        self.assertEqual(resp, {
+            "location": app.WEATHER_LOCATION, "updated": None, "days": [], "source": "unavailable",
+        })
+        self.assertEqual(app.data_status()["weather"], {"source": "unavailable", "as_of": None})
 
-    def test_malformed_response_serves_sample(self):
+    def test_malformed_response_is_unavailable(self):
         self.live_weather({"error": True, "reason": "bad request"})
-        self.assertEqual(app.weather()["source"], "sample")
+        self.assertEqual(app.weather()["source"], "unavailable")
+        self.assertEqual(app.weather()["days"], [])
 
-    def test_null_values_serve_sample(self):
+    def test_null_values_are_unavailable(self):
         payload = json.loads(json.dumps(OPEN_METEO_RESPONSE))
         payload["daily"]["temperature_2m_max"][3] = None
         self.live_weather(payload)
-        self.assertEqual(app.weather()["source"], "sample")
+        self.assertEqual(app.weather()["source"], "unavailable")
+        self.assertEqual(app.weather()["days"], [])
 
     def test_failure_is_not_cached(self):
-        self.assertEqual(app.weather()["source"], "sample")
+        self.assertEqual(app.weather()["source"], "unavailable")
         self.live_weather(OPEN_METEO_RESPONSE)
         self.assertEqual(app.weather()["source"], "live")
 
-    def test_shape_unchanged_across_sources(self):
-        """Live and sample responses have identical keys, so the frontend
-        renders either without changes."""
-        sample = app.weather()
+    def test_keys_unchanged_across_sources(self):
+        """Live and unavailable responses have identical top-level keys."""
+        unavailable = app.weather()
         self.live_weather(OPEN_METEO_RESPONSE)
         live = app.weather()
-        self.assert_weather_shape(sample)
         self.assert_weather_shape(live)
-        self.assertEqual(live["location"], sample["location"])
+        self.assertEqual(set(unavailable), set(live))
+        self.assertEqual(live["location"], unavailable["location"])
 
     def test_wmo_mapping_uses_only_existing_texts(self):
-        sample_conds = {json.dumps(d["cond"], sort_keys=True)
-                        for d in app._load_json("weather.json")["days"]}
+        known_conds = {json.dumps(c, sort_keys=True) for c in app._COND.values()}
         for code in list(range(0, 100)):
             cond = app._condition_for_wmo(code)
-            self.assertIn(json.dumps(cond, sort_keys=True), sample_conds, code)
+            self.assertIn(json.dumps(cond, sort_keys=True), known_conds, code)
 
 
 class DataStatusTests(FallbackTestCase):
@@ -320,7 +321,7 @@ class DataStatusTests(FallbackTestCase):
         self.assertEqual(app.data_status(), {
             "rainfall": {"source": "snapshot", "as_of": "2026-10-02"},
             "mandi": {"source": "sample", "as_of": None},
-            "weather": {"source": "sample", "as_of": None},
+            "weather": {"source": "unavailable", "as_of": None},
         })
 
 
