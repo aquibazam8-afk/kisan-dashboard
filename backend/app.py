@@ -430,7 +430,15 @@ def _weather_data():
         sample = _load_json("weather.json")
         return {"location": sample["location"], "updated": as_of, "days": days}, "live", as_of
     except Exception as e:
-        logging.warning("weather fetch failed: %s", type(e).__name__)
+        resp = getattr(e, "response", None)
+        # `is not None`, not truthiness: a Response is falsy for 4xx/5xx.
+        if resp is not None:
+            logging.warning(
+                "weather fetch failed: %s (HTTP %s): %s",
+                type(e).__name__, resp.status_code, resp.text[:200],
+            )
+        else:
+            logging.warning("weather fetch failed: %s", type(e).__name__)
     return _load_json("weather.json"), "sample", None
 
 
