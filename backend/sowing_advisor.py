@@ -225,30 +225,58 @@ def assess_kharif_sowing(records, today=None):
         f"विचलन, IMD मानक अनुसार '{category}' श्रेणी।"
     )
 
+    # A past season's window (fallback) is described in the past tense, with no
+    # instruction to act now; the current season's wording is advice.
     if status == "switch":
         alt = ALTERNATIVE_CROPS[DEFAULT_ALTERNATIVE]
-        reasoning = {
-            "en": base_en + f" Rainfall is severely deficient — switch to {alt['en']}, "
-                             f"a lower-water alternative.",
-            "hi": base_hi + f" बारिश में भारी कमी है — कम पानी वाली फसल {alt['hi']} की ओर बदलें।",
-        }
+        if is_fallback:
+            reasoning = {
+                "en": base_en + f" In that window rainfall was severely deficient, so the advice "
+                                 f"would have been to switch to {alt['en']}, a lower-water alternative.",
+                "hi": base_hi + f" उस अवधि में बारिश में भारी कमी थी, इसलिए सलाह यह होती कि कम पानी "
+                                 f"वाली फसल {alt['hi']} की ओर बदला जाए।",
+            }
+        else:
+            reasoning = {
+                "en": base_en + f" Rainfall is severely deficient — switch to {alt['en']}, "
+                                 f"a lower-water alternative.",
+                "hi": base_hi + f" बारिश में भारी कमी है — कम पानी वाली फसल {alt['hi']} की ओर बदलें।",
+            }
         alternative_crop = alt
         wait_window_days = None
     elif status == "wait":
-        reasoning = {
-            "en": base_en + f" Rainfall is deficient but not severe — wait up to "
-                             f"{WAIT_WINDOW_DAYS} more days before deciding whether to "
-                             f"sow paddy or switch crops.",
-            "hi": base_hi + f" सामान्य से कम है पर गंभीर नहीं — धान बोने या फसल बदलने का "
-                             f"फैसला करने से पहले {WAIT_WINDOW_DAYS} दिन और प्रतीक्षा करें।",
-        }
+        if is_fallback:
+            reasoning = {
+                "en": base_en + f" In that window rainfall was deficient but not severe, so the advice "
+                                 f"would have been to wait up to {WAIT_WINDOW_DAYS} more days before "
+                                 f"deciding whether to sow paddy or switch crops.",
+                "hi": base_hi + f" उस अवधि में बारिश सामान्य से कम थी पर गंभीर नहीं, इसलिए सलाह यह "
+                                 f"होती कि धान बोने या फसल बदलने का फैसला करने से पहले "
+                                 f"{WAIT_WINDOW_DAYS} दिन और प्रतीक्षा की जाए।",
+            }
+        else:
+            reasoning = {
+                "en": base_en + f" Rainfall is deficient but not severe — wait up to "
+                                 f"{WAIT_WINDOW_DAYS} more days before deciding whether to "
+                                 f"sow paddy or switch crops.",
+                "hi": base_hi + f" सामान्य से कम है पर गंभीर नहीं — धान बोने या फसल बदलने का "
+                                 f"फैसला करने से पहले {WAIT_WINDOW_DAYS} दिन और प्रतीक्षा करें।",
+            }
         alternative_crop = None
         wait_window_days = WAIT_WINDOW_DAYS
     else:
-        reasoning = {
-            "en": base_en + " Rainfall is at or above normal — go ahead and sow paddy as planned.",
-            "hi": base_hi + " बारिश सामान्य या उससे अधिक है — योजना अनुसार धान बोई जा सकती है।",
-        }
+        if is_fallback:
+            reasoning = {
+                "en": base_en + " In that window rainfall was at or above normal, so sowing paddy "
+                                "would have gone ahead as planned.",
+                "hi": base_hi + " उस अवधि में बारिश सामान्य या उससे अधिक थी, इसलिए योजना के अनुसार "
+                                "धान की बुआई की जा सकती थी।",
+            }
+        else:
+            reasoning = {
+                "en": base_en + " Rainfall is at or above normal — go ahead and sow paddy as planned.",
+                "hi": base_hi + " बारिश सामान्य या उससे अधिक है — योजना अनुसार धान बोई जा सकती है।",
+            }
         alternative_crop = None
         wait_window_days = None
 

@@ -192,6 +192,85 @@ class AssessKharifSowingTests(unittest.TestCase):
         self.assertEqual(result["season"], "2023")
         self.assertIsNotNone(result["note"])
 
+    def _assess_2020(self, daily_mm, today):
+        """2018-2019 at 20mm/day (normal 220mm) plus 2020 at `daily_mm`:
+        20 -> sow, 15 -> wait, 5 -> switch."""
+        records = self._multi_year_records({2018: 20, 2019: 20}, assess_year=2020, assess_daily_mm=daily_mm)
+        return assess_kharif_sowing(records, today=today)
+
+    # Current season: assessed on 2020-06-30. Past season: "today" is in 2023,
+    # which has no window data, so 2020 is shown as the latest complete window.
+    CURRENT, PAST = date(2020, 6, 30), date(2023, 8, 31)
+
+    def test_current_season_reasoning_unchanged(self):
+        expected = {
+            20: ("sow",
+                 " Rainfall is at or above normal — go ahead and sow paddy as planned.",
+                 " बारिश सामान्य या उससे अधिक है — योजना अनुसार धान बोई जा सकती है।"),
+            15: ("wait",
+                 " Rainfall is deficient but not severe — wait up to 14 more days before deciding "
+                 "whether to sow paddy or switch crops.",
+                 " सामान्य से कम है पर गंभीर नहीं — धान बोने या फसल बदलने का फैसला करने से पहले "
+                 "14 दिन और प्रतीक्षा करें।"),
+            5: ("switch",
+                " Rainfall is severely deficient — switch to Maize, a lower-water alternative.",
+                " बारिश में भारी कमी है — कम पानी वाली फसल मक्का की ओर बदलें।"),
+        }
+        for daily, (status, en_tail, hi_tail) in expected.items():
+            with self.subTest(status=status):
+                result = self._assess_2020(daily, self.CURRENT)
+                self.assertTrue(result["current_season"])
+                self.assertEqual(result["status"], status)
+                self.assertTrue(result["reasoning"]["en"].endswith(en_tail), result["reasoning"]["en"])
+                self.assertTrue(result["reasoning"]["hi"].endswith(hi_tail), result["reasoning"]["hi"])
+
+    def test_past_season_reasoning_is_past_tense(self):
+        expected = {
+            20: ("sow",
+                 " In that window rainfall was at or above normal, so sowing paddy would have gone "
+                 "ahead as planned.",
+                 " उस अवधि में बारिश सामान्य या उससे अधिक थी, इसलिए योजना के अनुसार धान की बुआई "
+                 "की जा सकती थी।"),
+            15: ("wait",
+                 " In that window rainfall was deficient but not severe, so the advice would have been "
+                 "to wait up to 14 more days before deciding whether to sow paddy or switch crops.",
+                 " उस अवधि में बारिश सामान्य से कम थी पर गंभीर नहीं, इसलिए सलाह यह होती कि धान बोने "
+                 "या फसल बदलने का फैसला करने से पहले 14 दिन और प्रतीक्षा की जाए।"),
+            5: ("switch",
+                " In that window rainfall was severely deficient, so the advice would have been to "
+                "switch to Maize, a lower-water alternative.",
+                " उस अवधि में बारिश में भारी कमी थी, इसलिए सलाह यह होती कि कम पानी वाली फसल मक्का "
+                "की ओर बदला जाए।"),
+        }
+        # Instructions to act now that must not appear for a past season.
+        imperatives_en = ("go ahead", "— wait", "— switch", "Rainfall is")
+        imperatives_hi = ("बोई जा सकती है", "प्रतीक्षा करें", "की ओर बदलें", "बारिश सामान्य या उससे अधिक है")
+        for daily, (status, en_tail, hi_tail) in expected.items():
+            with self.subTest(status=status):
+                result = self._assess_2020(daily, self.PAST)
+                self.assertFalse(result["current_season"])
+                self.assertEqual(result["season"], "2020")
+                self.assertEqual(result["status"], status)
+                en, hi = result["reasoning"]["en"], result["reasoning"]["hi"]
+                self.assertTrue(en.endswith(en_tail), en)
+                self.assertTrue(hi.endswith(hi_tail), hi)
+                for phrase in imperatives_en:
+                    self.assertNotIn(phrase, en)
+                for phrase in imperatives_hi:
+                    self.assertNotIn(phrase, hi)
+                # The figures are still there.
+                self.assertIn(f"{result['cumulative_rain_mm']}mm", en)
+                self.assertIn(result["category"], hi)
+
+    def test_past_season_keeps_structured_fields(self):
+        """Only the wording changes: status, alternative crop and wait days
+        are the same as for the same rainfall in the current season."""
+        for daily in (20, 15, 5):
+            current, past = self._assess_2020(daily, self.CURRENT), self._assess_2020(daily, self.PAST)
+            with self.subTest(status=current["status"]):
+                for key in ("status", "category", "departure_pct", "alternative_crop", "wait_window_days"):
+                    self.assertEqual(past[key], current[key], key)
+
     def test_uses_current_season_when_available(self):
         records = self._multi_year_records(
             {2018: 20, 2019: 20},
