@@ -11,7 +11,8 @@ import json
 import logging
 import os
 import time
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import numpy as np
@@ -60,12 +61,19 @@ RAINFALL_URL = "https://api.data.gov.in/resource/6c05cd1b-ed59-40c2-bc31-e314f39
 MANDI_CACHE_TTL = 3600  # seconds
 RAINFALL_CACHE_TTL = 6 * 3600  # rainfall is published daily, so cache longer
 
-# Live 7-day forecast (Open-Meteo, no key needed). When the fetch fails
-# /weather reports "unavailable" with no days — never an invented forecast.
+# Live 7-day forecast, no keys needed: Open-Meteo, then MET Norway as
+# failover. When both fail /weather reports "unavailable" with no days —
+# never an invented forecast.
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+# MET Norway terms (api.met.no/doc/TermsOfService): identify the app in the
+# User-Agent, max 4 decimals in coordinates, don't re-request before Expires,
+# re-request with If-Modified-Since, credit "Data from MET Norway".
+MET_NO_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+MET_NO_USER_AGENT = "KisanDashboard/1.0 github.com/aquibazam8-afk/kisan-dashboard"
 RANCHI_LAT, RANCHI_LON = 23.34, 85.31
 WEATHER_LOCATION = {"en": "Ranchi, Jharkhand", "hi": "रांची, झारखंड"}
 WEATHER_CACHE_TTL = 30 * 60  # seconds
+IST = timezone(timedelta(hours=5, minutes=30))  # Asia/Kolkata; India has no DST
 
 # Snapshots of the live data, written by refresh_snapshots.py on a machine
 # that can reach api.data.gov.in (Render's servers can't) and committed.
@@ -420,26 +428,177 @@ def _fetch_open_meteo_days():
     return days
 
 
-def _weather_data():
-    """(dict with location/updated/days, source, as_of) — never raises.
+def _condition_key_for_met_symbol(symbol):
+    """_COND key for a MET Norway symbol_code, approximated like _condition_for_wmo:
+    thunder/snow -> Rain, fog -> Cloudy."""
+    s = symbol.split("_")[0]  # drop _day / _night / _polartwilight
+    if "thunder" in s or "snow" in s:
+        return "rain"
+    if "showers" in s:
+        return "showers"
+    if s in ("lightrain", "lightsleet"):
+        return "light_rain"
+    if "rain" in s or "sleet" in s:
+        return "rain"
+    if s in ("clearsky", "fair"):
+        return "sunny"
+    if s == "partlycloudy":
+        return "partly"
+    return "cloudy"  # cloudy, fog, anything unknown
 
-    Live Open-Meteo, or "unavailable" with no days when the fetch fails.
+
+# A day shows its most severe period, like Open-Meteo's daily weathercode.
+_COND_SEVERITY = ["sunny", "partly", "cloudy", "light_rain", "showers", "rain"]
+
+
+def _today_ist():
+    return datetime.now(IST).date()
+
+
+def _met_no_days(timeseries, today):
+    """7 day dicts from a Locationforecast timeseries (UTC times, 1 h steps
+    for ~2.5 days, then 6 h steps), for whole IST days from `today` on.
+
+    - tmax/tmin: max/min of the instant air_temperature samples in the day.
+      On 6 h-step days that is only 4 samples, so extremes may be missed.
+    - rain_mm: sum over non-overlapping periods — next_1_hours where present,
+      otherwise next_6_hours; a period starting inside one already counted is
+      skipped. A period counts toward the day of its midpoint (a 6 h period
+      from 23:30 IST belongs to the next day).
+    - cond: the most severe condition among those periods.
+    A day is kept only if its samples run from <=06:00 to >=18:00 IST, so a
+    part-day (today, fetched in the evening) is dropped.
     """
-    try:
-        days = _fetch_open_meteo_days()
-        as_of = _iso_date(_weather_cache["fetched_at"] or time.time())
-        return {"location": WEATHER_LOCATION, "updated": as_of, "days": days}, "live", as_of
-    except Exception as e:
-        resp = getattr(e, "response", None)
-        # `is not None`, not truthiness: a Response is falsy for 4xx/5xx.
-        if resp is not None:
-            logging.warning(
-                "weather fetch failed: %s (HTTP %s): %s",
-                type(e).__name__, resp.status_code, resp.text[:200],
-            )
+    by_day = {}
+
+    def day_for(d):
+        return by_day.setdefault(d, {"temps": [], "times": [], "rain": 0.0, "conds": []})
+
+    covered_until = None
+    for entry in timeseries:
+        t = datetime.fromisoformat(entry["time"].replace("Z", "+00:00"))
+        data = entry["data"]
+        local = t.astimezone(IST)
+        day = day_for(local.date())
+        day["temps"].append(data["instant"]["details"]["air_temperature"])
+        day["times"].append(local.time())
+
+        if covered_until is not None and t < covered_until:
+            continue
+        if "next_1_hours" in data:
+            period, hours = data["next_1_hours"], 1
+        elif "next_6_hours" in data:
+            period, hours = data["next_6_hours"], 6
         else:
-            logging.warning("weather fetch failed: %s", type(e).__name__)
-    return {"location": WEATHER_LOCATION, "updated": None, "days": []}, "unavailable", None
+            continue  # last entry: instant values only
+        pday = day_for((t + timedelta(hours=hours / 2)).astimezone(IST).date())
+        pday["rain"] += period["details"]["precipitation_amount"]
+        pday["conds"].append(_condition_key_for_met_symbol(period["summary"]["symbol_code"]))
+        covered_until = t + timedelta(hours=hours)
+
+    days = []
+    for d in sorted(by_day):
+        v = by_day[d]
+        if d < today or not v["conds"]:
+            continue
+        if min(v["times"]).hour > 6 or max(v["times"]).hour < 18:
+            continue
+        days.append({
+            "day": _WEEKDAYS[d.weekday()],
+            "tmax": round(max(v["temps"])),
+            "tmin": round(min(v["temps"])),
+            "rain_mm": round(v["rain"], 1),
+            "cond": _COND[max(v["conds"], key=_COND_SEVERITY.index)],
+        })
+    if len(days) < 7:
+        raise ValueError(f"only {len(days)} whole days in forecast")
+    return days[:7]
+
+
+def _http_date_ts(value):
+    """Epoch seconds of an RFC 1123 HTTP date header, or 0 if absent/invalid."""
+    try:
+        return parsedate_to_datetime(value).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
+_met_no_cache = {"timeseries": None, "fetched_at": 0.0, "last_modified": None, "next_request_at": 0.0}
+
+
+def _fetch_met_no_days():
+    """7 day dicts from MET Norway Locationforecast, following its terms.
+
+    No request before both WEATHER_CACHE_TTL and the response's Expires have
+    passed — after a failure too, so a 429 is not retried right away. Repeat
+    requests send If-Modified-Since (the stored Last-Modified); a 304 keeps
+    the stored forecast. Days are re-derived on each call so they roll over
+    at midnight.
+    """
+    now = time.time()
+    c = _met_no_cache
+    if now < c["next_request_at"]:
+        if c["timeseries"] is None:
+            raise RuntimeError("MET Norway: waiting before retrying")
+        return _met_no_days(c["timeseries"], _today_ist())
+
+    headers = {"User-Agent": MET_NO_USER_AGENT}
+    if c["timeseries"] is not None and c["last_modified"]:
+        headers["If-Modified-Since"] = c["last_modified"]
+    c["next_request_at"] = now + WEATHER_CACHE_TTL  # back off if this fails
+    resp = requests.get(
+        MET_NO_URL,
+        params={"lat": RANCHI_LAT, "lon": RANCHI_LON},  # max 4 decimals (ToS)
+        headers=headers,
+        timeout=10,
+    )
+    if resp.status_code == 304:
+        timeseries = c["timeseries"]
+    else:
+        resp.raise_for_status()
+        if resp.status_code == 203:
+            logging.warning("MET Norway: this product is deprecated (HTTP 203)")
+        timeseries = resp.json()["properties"]["timeseries"]
+    days = _met_no_days(timeseries, _today_ist())
+
+    if resp.status_code != 304:
+        c["timeseries"] = timeseries
+        c["last_modified"] = resp.headers.get("Last-Modified")
+    c["fetched_at"] = now
+    c["next_request_at"] = max(now + WEATHER_CACHE_TTL, _http_date_ts(resp.headers.get("Expires")))
+    return days
+
+
+def _log_weather_failure(provider, e):
+    resp = getattr(e, "response", None)
+    # `is not None`, not truthiness: a Response is falsy for 4xx/5xx.
+    if resp is not None:
+        logging.warning(
+            "weather fetch failed (%s): %s (HTTP %s): %s",
+            provider, type(e).__name__, resp.status_code, resp.text[:200],
+        )
+    else:
+        logging.warning("weather fetch failed (%s): %s", provider, type(e).__name__)
+
+
+def _weather_data():
+    """(dict with location/updated/provider/days, source, as_of) — never raises.
+
+    Open-Meteo, then MET Norway, else "unavailable" with no days.
+    """
+    for provider, fetch, cache in (
+        ("open-meteo", _fetch_open_meteo_days, _weather_cache),
+        ("met-no", _fetch_met_no_days, _met_no_cache),
+    ):
+        try:
+            days = fetch()
+        except Exception as e:
+            _log_weather_failure(provider, e)
+            continue
+        as_of = _iso_date(cache["fetched_at"] or time.time())
+        data = {"location": WEATHER_LOCATION, "updated": as_of, "provider": provider, "days": days}
+        return data, "live", as_of
+    return {"location": WEATHER_LOCATION, "updated": None, "provider": None, "days": []}, "unavailable", None
 
 
 # --- Endpoints -------------------------------------------------------------
@@ -454,10 +613,11 @@ def health():
 
 @app.get("/weather")
 def weather():
-    """7-day Ranchi forecast from Open-Meteo.
+    """7-day Ranchi forecast from Open-Meteo, or MET Norway when that fails.
 
-    When the live fetch fails, `source` is "unavailable" and `days` is empty;
-    the keys are the same either way. No sample forecast is ever served.
+    `provider` ("open-meteo" | "met-no") says which one. When both fail,
+    `source` is "unavailable", `provider` is null and `days` is empty; the
+    keys are the same either way. No sample forecast is ever served.
     """
     data, source, _ = _weather_data()
     return {**data, "source": source}

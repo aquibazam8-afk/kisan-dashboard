@@ -82,7 +82,8 @@ const T = {
   mandiSnapshot: (d) => ({ en: `Prices as of ${d}`, hi: `${d} के भाव` }),
   rainSnapshot: (d) => ({ en: `Rainfall data saved on ${d}`, hi: `वर्षा डेटा ${d} को सहेजा गया` }),
   weatherUnavailable: { en: "Weather forecast unavailable right now", hi: "मौसम पूर्वानुमान अभी उपलब्ध नहीं है" },
-  weatherCredit: { en: "Forecast: Open-Meteo", hi: "पूर्वानुमान: Open-Meteo" },
+  weatherCreditOpenMeteo: { en: "Forecast: Open-Meteo", hi: "पूर्वानुमान: Open-Meteo" },
+  weatherCreditMetNo: { en: "Forecast based on data from MET Norway", hi: "पूर्वानुमान MET Norway के डेटा पर आधारित" },
   modelCaveat: { en: "Trained on clear leaf photos; field results may vary.", hi: "साफ़ पत्ती की फ़ोटो पर प्रशिक्षित; खेत में नतीजे अलग हो सकते हैं।" },
   predictFailed: { en: "Could not check this photo. Please try again.", hi: "इस फ़ोटो की जाँच नहीं हो सकी। कृपया फिर से कोशिश करें।" },
 };
@@ -242,9 +243,20 @@ export default function KisanDashboard() {
                     </div>
                   ))}
                 </div>
-                <p style={S.caveat}>
-                  <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style={S.creditLink}>{t(T.weatherCredit)}</a>
-                </p>
+                {weather.provider === "met-no" ? (
+                  // MET Norway data is CC BY 4.0: credit plus a link to the licence.
+                  <p style={S.caveat}>
+                    <a href="https://www.met.no/en" target="_blank" rel="noopener noreferrer" style={S.creditLink}>{t(T.weatherCreditMetNo)}</a>
+                    {" ("}
+                    <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" style={S.creditLink}>CC BY 4.0</a>
+                    {")"}
+                  </p>
+                ) : (
+                  // "open-meteo", or no provider field (older backend: Open-Meteo only).
+                  <p style={S.caveat}>
+                    <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style={S.creditLink}>{t(T.weatherCreditOpenMeteo)}</a>
+                  </p>
+                )}
               </>
             )}
           </div>
