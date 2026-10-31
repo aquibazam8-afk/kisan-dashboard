@@ -75,6 +75,14 @@ gap requires a locally retrained classifier, not a national one.
       an honest data-availability signal, not a bug.
 - [ ] **Phase 4** — District dashboard: block-level rainfall, sowing progress and disease reports for extension staff
 
+Not done yet:
+
+- [ ] Crop sections with sourced vegetable data
+- [ ] Redesign
+- [ ] Arhar disease detection (see Phase 2)
+- [ ] India-hosted live mandi and rainfall data (see [Known limitations](#known-limitations-of-the-hosted-demo))
+- [ ] Usage logging
+
 ### Bug fixed during Phase 3
 
 While wiring up the rainfall fetch, `api.data.gov.in` was found to silently stall — no response, no error,
@@ -91,6 +99,8 @@ a `DATAGOV_HEADERS` constant with the fix.
 |---|---|---|
 | Frontend | [Vercel](https://kisan-dashboard.vercel.app) | Root directory `frontend/app`; `VITE_API_BASE` env var points at the backend. `vercel.json` rewrites every path to `index.html` so `/staff` loads directly. |
 | Backend | Render free tier, Singapore region | Free instances sleep after 15 minutes idle; the first request after that takes about 50 seconds (cold start). `DATAGOV_API_KEY` is set as a Render environment variable. |
+
+Besides local runs, the app was also tested on the hosted demo, including the free-tier cold start (about 50 s).
 
 Both disease models are served as **TensorFlow Lite** via `ai-edge-litert` rather than full TensorFlow, so the
 backend fits in the free tier's 512 MB RAM. `backend/convert_to_tflite.py` converts the Keras models;
@@ -119,6 +129,30 @@ would need India-hosted infrastructure that can reach data.gov.in.
 **Sowing advisor out of season.** Outside the Jun 20–30 window (or when the upstream feed hasn't caught up),
 the advisor assesses the most recent complete window on record — currently Kharif 2025 — and says so in the
 response and the UI.
+
+## Weather forecast
+
+The weather tab shows a live 7-day forecast for Ranchi, tried in this order:
+
+1. **Open-Meteo** daily forecast.
+2. **MET Norway Locationforecast** (`locationforecast/2.0/compact`) as failover. Its hourly/6-hourly data is
+   aggregated to daily values by this app (high/low temperature, total rainfall, one condition per day). The UI
+   credits it as "Forecast based on data from MET Norway (CC BY 4.0)", linking to MET Norway and the licence. Requests follow MET
+   Norway's terms: an identifying User-Agent, at most 4 decimals in coordinates, no repeat request before the
+   `Expires` time, and `If-Modified-Since` on repeat requests.
+3. **Unavailable**: if both fail, the tab says "Weather forecast unavailable right now". No invented or sample
+   forecast is ever shown.
+
+The failover exists because on Render's shared free-tier IPs, Open-Meteo returned HTTP 429 (daily per-IP limit
+exceeded).
+
+Known limits:
+
+- On the MET Norway fallback the forecast starts **tomorrow**: its data begins at the current hour, and partial
+  days are dropped rather than shown with a misleading high/low.
+- On the MET Norway fallback, highs/lows from day 3 on are less precise: the source data there is 6-hourly, so
+  the true high or low can fall between readings.
+- Thunderstorms are shown as "Rain"; there is no separate thunderstorm warning yet.
 
 ## Disease check
 
@@ -163,6 +197,8 @@ pursued for now.
 |---|---|---|
 | Agmarknet | Live mandi prices | Integrated (with fallback); sample prices on the hosted demo |
 | data.gov.in (NRSC VIC model) | Rainfall for sowing-advisor | Integrated; saved snapshot on the hosted demo |
+| Open-Meteo | 7-day weather forecast | Integrated (live) |
+| MET Norway Locationforecast | 7-day weather forecast when Open-Meteo fails | Integrated (live failover) |
 | ATMA Ranchi SREP | Crop-switch thresholds and recommended alternatives | Reference |
 | PlantVillage | Base CNN weights (pre-trained, 38-class) | Integrated |
 
@@ -180,5 +216,7 @@ pursued for now.
 | Paddy Doctor | Paddy disease model | "Paddy Doctor: A Visual Image Dataset for Automated Paddy Disease Classification and Benchmarking", [arXiv:2205.11108](https://arxiv.org/abs/2205.11108) | Check source |
 | Agmarknet (via data.gov.in) | Mandi prices | data.gov.in resource `9ef84268-d588-465a-a308-a864a43d0070` | Check source |
 | District rainfall, NRSC VIC model (via data.gov.in) | Rainfall for the sowing advisor | data.gov.in resource `6c05cd1b-ed59-40c2-bc31-e314f39c6971` | Check source |
+| Open-Meteo | 7-day weather forecast | [open-meteo.com](https://open-meteo.com/) | Check source |
+| MET Norway Locationforecast | Weather forecast failover; aggregated to daily values by this app | Based on data from MET Norway, [api.met.no](https://api.met.no/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 | ATMA Ranchi Strategic Research & Extension Plan, Ch. 9 | Sowing window and alternative crops | [atmaranchi.in](http://www.atmaranchi.in/srep/chapter9.pdf) | Check source |
 | India Meteorological Department (IMD) | Departure-from-normal rainfall categories | IMD rainfall classification standard | Check source |
