@@ -17,9 +17,9 @@ locally; see [Known limitations](#known-limitations-of-the-hosted-demo)).
 
 *Sowing advisor: last season's result (Kharif 2025), clearly labelled as not the current season and for reference only.*
 
-![Disease check result for a paddy leaf photo](docs/screenshots/03-disease-check.png)
+![Disease check screen with the leaf photo upload button](docs/screenshots/03-disease-check.png)
 
-*Disease check: paddy disease detection from a leaf photo, with confidence and what to do.*
+*Disease check: choose a crop, then take or upload a leaf photo to get the likely disease, a confidence score and advice (a result screen is not shown here).*
 
 ![District Situation Dashboard for extension staff](docs/screenshots/04-staff-dashboard.png)
 
