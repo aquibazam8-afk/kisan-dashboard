@@ -6,6 +6,24 @@ locally; see [Known limitations](#known-limitations-of-the-hosted-demo)).
 
 **Live demo:** https://kisan-dashboard.vercel.app (staff view at `/staff`)
 
+## Screenshots
+
+![Weather tab with a 7-day forecast for Ranchi](docs/screenshots/01-weather.png)
+
+*Weather: 7-day forecast from live data, with the provider credit (here MET Norway, the failover source).*
+
+![Sowing advisor showing the Kharif 2025 result labelled as reference only](docs/screenshots/02-sowing-advisor.png)
+
+*Sowing advisor: last season's result (Kharif 2025), clearly labelled as not the current season and for reference only.*
+
+![Disease check result for a paddy leaf photo](docs/screenshots/03-disease-check.png)
+
+*Disease check: paddy disease detection from a leaf photo, with confidence and what to do.*
+
+![District Situation Dashboard for extension staff](docs/screenshots/04-staff-dashboard.png)
+
+*Staff dashboard (`/staff`): district view for extension staff; mandi prices are labelled as sample data.*
+
 ---
 
 ## Why this exists
