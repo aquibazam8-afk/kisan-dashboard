@@ -127,6 +127,8 @@ predicted class and confidence from each — they matched on the images checked.
 
 ## Known limitations of the hosted demo
 
+**Slow first load after idle.** The backend runs on Render's free tier, which sleeps after 15 minutes without traffic. The first visit after that can take about a minute to wake the server, and weather may briefly show as unavailable until it is up; refresh and it recovers.
+
 **No live data.gov.in access from Render.** Render's servers cannot reach `api.data.gov.in`: Render's logs show
 the connection being refused (Errno 111), while `example.com` was reachable from the same server (checked with a
 temporary diagnostic endpoint, since removed). The same code fetches live data when run locally. So on the
@@ -229,12 +231,12 @@ pursued for now.
 
 | Dataset / model | Used for | Source | License |
 |---|---|---|---|
-| PlantVillage | Maize, potato and tomato disease classes (38-class CNN) | Hughes & Salathé, [arXiv:1511.08060](https://arxiv.org/abs/1511.08060) | Check source |
-| `trained_plant_disease_model.keras` | The PlantVillage CNN weights served by the backend | **TODO: record where this trained model came from (author / repository / link).** | Check source |
-| Paddy Doctor | Paddy disease model | "Paddy Doctor: A Visual Image Dataset for Automated Paddy Disease Classification and Benchmarking", [arXiv:2205.11108](https://arxiv.org/abs/2205.11108) | Check source |
+| PlantVillage | Maize, potato and tomato disease classes (38-class CNN) | Hughes & Salathé, [arXiv:1511.08060](https://arxiv.org/abs/1511.08060) | No licence file in the [GitHub repo](https://github.com/spMohanty/PlantVillage-Dataset) (citation requested); the [Zenodo record](https://zenodo.org/records/1204914) lists CC BY 4.0 but its description also mentions CC BY-SA 3.0 US, so the terms are inconsistent. Verify before any commercial use. |
+| `trained_plant_disease_model.keras` | The PlantVillage CNN weights served by the backend | Source not recorded. The origin of these pre-trained weights was not documented when they were added. | Unknown |
+| Paddy Doctor | Paddy disease model | "Paddy Doctor: A Visual Image Dataset for Automated Paddy Disease Classification and Benchmarking", [arXiv:2205.11108](https://arxiv.org/abs/2205.11108) | Released openly by the authors; the paper states no licence. Verify at [paddydoc.github.io](https://paddydoc.github.io/) before any commercial use. |
 | Agmarknet (via data.gov.in) | Mandi prices | data.gov.in resource `9ef84268-d588-465a-a308-a864a43d0070` | Check source |
 | District rainfall, NRSC VIC model (via data.gov.in) | Rainfall for the sowing advisor | data.gov.in resource `6c05cd1b-ed59-40c2-bc31-e314f39c6971` | Check source |
-| Open-Meteo | 7-day weather forecast | [open-meteo.com](https://open-meteo.com/) | Check source |
+| Open-Meteo | 7-day weather forecast | [open-meteo.com](https://open-meteo.com/) | Data [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); the free API is for non-commercial use only ([terms](https://open-meteo.com/en/terms)) |
 | MET Norway Locationforecast | Weather forecast failover; aggregated to daily values by this app | Based on data from MET Norway, [api.met.no](https://api.met.no/) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) |
 | ATMA Ranchi Strategic Research & Extension Plan, Ch. 9 | Sowing window and alternative crops | [atmaranchi.in](http://www.atmaranchi.in/srep/chapter9.pdf) | Check source |
 | India Meteorological Department (IMD) | Departure-from-normal rainfall categories | IMD rainfall classification standard | Check source |
