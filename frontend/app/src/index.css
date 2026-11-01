@@ -1,111 +1,456 @@
+/* Khet Saathi — design tokens and farmer-app styles.
+   Palette: cream paper, paddy-leaf green, laterite red (Jharkhand's soil).
+   Every text/background pair below meets WCAG AA (most AAA) in both modes,
+   including text sitting directly on the page gradient + contour pattern.
+
+   Theme: <html data-theme="auto|light|dark">. "auto" (the default, or no
+   attribute) follows the system setting; light/dark force a mode. */
+
+/* Faint field-contour lines (terraced paddy), tiled. Light and dark differ
+   only in stroke colour and opacity. */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --page-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='96'%3E%3Cpath d='M0 12C80 2 240 22 320 12M0 36c100 10 220-10 320 0M0 60C80 50 240 70 320 60M0 84c100 10 220-10 320 0' fill='none' stroke='%238A7448' stroke-opacity='.1' stroke-width='1.5'/%3E%3C/svg%3E");
+  --page-gradient: linear-gradient(180deg, #F8F3E6 0%, #EFE5CE 100%);
+}
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+:root {
+  --bg: #F5EFDF;
+  --surface: #FFFDF7;
+  --ink: #1D2A1F;
+  --muted: #4E5A4C;
+  --line: #D9CFB8;
+  --primary: #1F5135;
+  --on-primary: #FFFFFF;
+  --accent: #9E3F24;
+  --on-accent: #FFFFFF;
+  --chip: #E9F1E8;
+  --rain: #2B5C88;
+  --rain-track: #E3E7E6;
+  --good: #1F6B3E;
+  --warn: #7A4E00;
+  --bad: #9C2A22;
+  --past: #635B49;
+  --note-bg: #FBEFC8;
+  --note-line: #E2C77A;
+  --note-ink: #5A4100;
+  --skeleton: #E6DDC8;
+  --skeleton-hi: #F2ECDD;
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
+  --radius-card: 20px;
+  --radius-control: 14px;
+  --radius-note: 8px;
+
+  --font: "Atkinson Hyperlegible", "Noto Sans Devanagari", system-ui, "Segoe UI", Roboto, sans-serif;
+
   color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
 }
+:root[data-theme="light"] { color-scheme: light; }
 
+/* Dark tokens appear twice — forced dark, and auto + system dark. Keep the
+   two blocks identical. (CSS light-dark() would avoid this, but it is too
+   new for the older Android browsers this app has to support.) */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='96'%3E%3Cpath d='M0 12C80 2 240 22 320 12M0 36c100 10 220-10 320 0M0 60C80 50 240 70 320 60M0 84c100 10 220-10 320 0' fill='none' stroke='%23B9D3BE' stroke-opacity='.06' stroke-width='1.5'/%3E%3C/svg%3E");
+  --page-gradient: linear-gradient(180deg, #16211A 0%, #0D130F 100%);
+  --bg: #121812;
+  --surface: #1B231C;
+  --ink: #EDE7D7;
+  --muted: #B5B09F;
+  --line: #33403A;
+  --primary: #9DC4A8;
+  --on-primary: #0D1A11;
+  --accent: #D6967D;
+  --on-accent: #0D1A11;
+  --chip: #22352A;
+  --rain: #93B6D6;
+  --rain-track: #26313A;
+  --good: #9DC4A8;
+  --warn: #D9B26A;
+  --bad: #E3A193;
+  --past: #C2B9A4;
+  --note-bg: #3A2F12;
+  --note-line: #6B5A2A;
+  --note-ink: #F2D891;
+  --skeleton: #26302A;
+  --skeleton-hi: #303B34;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --page-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='96'%3E%3Cpath d='M0 12C80 2 240 22 320 12M0 36c100 10 220-10 320 0M0 60C80 50 240 70 320 60M0 84c100 10 220-10 320 0' fill='none' stroke='%23B9D3BE' stroke-opacity='.06' stroke-width='1.5'/%3E%3C/svg%3E");
+    --page-gradient: linear-gradient(180deg, #16211A 0%, #0D130F 100%);
+    --bg: #121812;
+    --surface: #1B231C;
+    --ink: #EDE7D7;
+    --muted: #B5B09F;
+    --line: #33403A;
+    --primary: #9DC4A8;
+    --on-primary: #0D1A11;
+    --accent: #D6967D;
+    --on-accent: #0D1A11;
+    --chip: #22352A;
+    --rain: #93B6D6;
+    --rain-track: #26313A;
+    --good: #9DC4A8;
+    --warn: #D9B26A;
+    --bad: #E3A193;
+    --past: #C2B9A4;
+    --note-bg: #3A2F12;
+    --note-line: #6B5A2A;
+    --note-ink: #F2D891;
+    --skeleton: #26302A;
+    --skeleton-hi: #303B34;
   }
 }
+
+*, *::before, *::after { box-sizing: border-box; }
 
 body {
   margin: 0;
+  min-height: 100vh;
+  background-color: var(--bg); /* if the gradient/pattern can't render */
+  background-image: var(--page-pattern), var(--page-gradient);
+  background-repeat: repeat, no-repeat;
+  background-size: auto, 100% 100%;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
+/* Fixed background only on large pointer screens: mobile browsers often
+   ignore it or repaint on scroll, so phones scroll it with the page. */
+@media (min-width: 768px) and (hover: hover) {
+  body { background-attachment: fixed, fixed; }
+}
+
+/* Devanagari needs more room for matras above and below the line. */
+:lang(hi) { line-height: 1.65; }
+
+button { font: inherit; color: inherit; }
+a { color: inherit; }
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── App frame ─────────────────────────────────────────────────────────── */
+.ks-app {
+  max-width: 640px;
   margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
+  padding: 16px 16px 40px;
+}
+
+.ks-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+  border-bottom: 4px solid var(--accent);
+}
+.ks-title {
+  margin: 0;
+  font-size: 1.75rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--primary);
+}
+.ks-district {
+  margin: 4px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+.ks-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+.ks-dot[data-online="true"] { background: var(--good); }
+
+.ks-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.ks-lang, .ks-theme {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 0 16px;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--primary);
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ks-lang:hover, .ks-theme:hover { background: var(--chip); }
+.ks-theme { padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; }
+
+.ks-label {
+  margin: 0 0 8px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* ── Crop and tab pickers ──────────────────────────────────────────────── */
+.ks-crops {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.ks-crop, .ks-tab {
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.2;
+}
+.ks-crop { min-height: 76px; padding: 8px 4px; font-size: 0.875rem; }
+.ks-crop-icon { font-size: 1.75rem; line-height: 1; }
+.ks-crop:hover, .ks-tab:hover { border-color: var(--muted); }
+.ks-crop[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+.ks-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.ks-tab { min-height: 64px; padding: 8px 4px; font-size: 0.8125rem; }
+.ks-tab-icon { font-size: 1.375rem; line-height: 1; }
+.ks-tab[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+/* ── Content panel ─────────────────────────────────────────────────────── */
+.ks-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 18px 16px;
+  min-height: 220px;
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+/* Honesty labels: data source, sample data, reference-only. Always shown. */
+.ks-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--note-line);
+  border-radius: var(--radius-note);
+  background: var(--note-bg);
+  color: var(--note-ink);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.ks-note:last-child { margin-bottom: 0; }
+.ks-banner { margin-bottom: 16px; }
+
+.ks-credit {
+  margin: 14px 0 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.ks-credit a { text-underline-offset: 2px; }
+
+.ks-empty {
+  text-align: center;
+  padding: 16px 8px;
+}
+.ks-empty-icon { font-size: 2.25rem; line-height: 1; margin-bottom: 8px; }
+.ks-empty-text { margin: 0 0 14px; font-size: 1rem; font-weight: 700; }
+
+.ks-btn {
+  min-height: 48px;
+  padding: 0 20px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+  cursor: pointer;
+}
+.ks-btn-big {
+  width: 100%;
+  min-height: 60px;
+  font-size: 1.125rem;
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+/* ── Skeletons ─────────────────────────────────────────────────────────── */
+.ks-skel {
+  display: block;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-hi) 50%, var(--skeleton) 75%);
+  background-size: 200% 100%;
+  animation: ks-shimmer 1.4s ease-in-out infinite;
 }
+.ks-skel + .ks-skel { margin-top: 10px; }
+.ks-skel-head { height: 26px; width: 60%; }
+@keyframes ks-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ks-skel { animation: none; }
+}
+.ks-loading-text { margin: 14px 0 0; font-size: 0.875rem; color: var(--muted); }
+
+/* ── Weather: rain-first week ──────────────────────────────────────────── */
+.ks-week { list-style: none; margin: 0; padding: 0; }
+.ks-week-head, .ks-day {
+  display: grid;
+  grid-template-columns: 3.25rem 1fr 6.25rem;
+  align-items: center;
+  gap: 10px;
+}
+.ks-week-head {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--muted);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.ks-day { min-height: 48px; border-bottom: 1px solid var(--line); }
+.ks-day:last-child { border-bottom: none; }
+.ks-day-name { font-weight: 700; }
+.ks-rain { display: flex; align-items: center; gap: 8px; }
+.ks-rain-track {
+  flex: 1;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--rain-track);
+  overflow: hidden;
+}
+.ks-rain-fill { height: 100%; border-radius: 6px; background: var(--rain); }
+.ks-rain-mm {
+  min-width: 3.25rem;
+  text-align: right;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--rain);
+  font-variant-numeric: tabular-nums;
+}
+.ks-rain-mm[data-dry="true"] { color: var(--muted); font-weight: 400; }
+.ks-temps { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ks-tmax { font-size: 1.125rem; font-weight: 700; }
+.ks-tmin { color: var(--muted); }
+
+/* ── Key/value, tip, lists ─────────────────────────────────────────────── */
+.ks-kv {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.ks-k { color: var(--muted); font-weight: 700; }
+.ks-v { font-weight: 700; text-align: right; }
+.ks-tip {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-left: 4px solid var(--primary);
+  border-radius: var(--radius-note);
+  background: var(--chip);
+}
+
+/* ── Sowing advisor ────────────────────────────────────────────────────── */
+.ks-advice-for { margin: 0 0 6px; font-size: 0.9375rem; font-weight: 700; color: var(--muted); }
+.ks-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-size: 1.625rem;
+  line-height: 1.25;
+  font-weight: 700;
+}
+.ks-verdict[data-status="sow"] { color: var(--good); }
+.ks-verdict[data-status="wait"] { color: var(--warn); }
+.ks-verdict[data-status="switch"] { color: var(--bad); }
+.ks-verdict[data-status="past"] { color: var(--past); }
+.ks-reasoning { margin: 0 0 14px; font-size: 1rem; }
+
+/* ── Mandi ─────────────────────────────────────────────────────────────── */
+.ks-price {
+  display: grid;
+  grid-template-columns: 1fr auto 1.75rem;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border-bottom: 1px solid var(--line);
+}
+.ks-price-name { font-weight: 700; }
+.ks-price-value { font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ks-trend { text-align: center; font-weight: 700; }
+.ks-trend[data-trend="up"] { color: var(--good); }
+.ks-trend[data-trend="down"] { color: var(--bad); }
+.ks-trend[data-trend="flat"] { color: var(--muted); }
+.ks-best {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-note);
+  background: var(--chip);
+}
+
+/* ── Pest ──────────────────────────────────────────────────────────────── */
+.ks-pest { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; }
+.ks-level {
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  border: 2px solid currentColor;
+}
+.ks-level[data-level="high"] { color: var(--bad); }
+.ks-level[data-level="medium"] { color: var(--warn); }
+.ks-level[data-level="low"] { color: var(--good); }
+.ks-pest-name { font-size: 1.0625rem; font-weight: 700; }
+.ks-pest-note { color: var(--muted); }
+
+/* ── Disease check ─────────────────────────────────────────────────────── */
+.ks-hint { margin: 10px 0 0; text-align: center; color: var(--muted); }
+.ks-result { margin-top: 18px; }
+.ks-result-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.ks-result-crop { font-weight: 700; color: var(--muted); }
+.ks-result-disease { font-size: 1.375rem; font-weight: 700; }
+.ks-result-disease[data-healthy="true"] { color: var(--good); }
+.ks-result-disease[data-healthy="false"] { color: var(--bad); }
+.ks-conf { height: 10px; margin-top: 10px; border-radius: 5px; background: var(--rain-track); overflow: hidden; }
+.ks-conf-fill { height: 100%; border-radius: 5px; background: var(--good); }
+.ks-conf-fill[data-low="true"] { background: var(--warn); }
+.ks-conf-text { margin-top: 4px; font-size: 0.875rem; font-weight: 700; color: var(--muted); }
+.ks-result-desc { margin: 12px 0 0; }
+.ks-action {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-note);
+  background: var(--chip);
+}
+.ks-result .ks-note { margin-top: 12px; }

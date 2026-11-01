@@ -58,8 +58,13 @@ const PESTS = {
 };
 
 const T = {
-  title: { en: "Kisan Dashboard", hi: "किसान डैशबोर्ड" },
+  title: { en: "Khet Saathi", hi: "खेत साथी" },
   sub: { en: "Ranchi District", hi: "रांची ज़िला" },
+  statusOnline: { en: "Connected to server", hi: "सर्वर से जुड़ा है" },
+  statusOffline: { en: "Not connected to server", hi: "सर्वर से नहीं जुड़ा" },
+  sections: { en: "Sections", hi: "विभाग" },
+  themeName: { en: "Theme", hi: "रंग-रूप" },
+  themeChange: { en: "tap to change", hi: "बदलने के लिए दबाएं" },
   weather: { en: "Weather", hi: "मौसम" },
   sowing: { en: "Sowing", hi: "बुआई सलाह" },
   advisory: { en: "Sowing Advisor", hi: "बुआई सलाहकार" },
@@ -85,6 +90,14 @@ const T = {
   mandiSnapshot: (d) => ({ en: `Prices as of ${d}`, hi: `${d} के भाव` }),
   rainSnapshot: (d) => ({ en: `Rainfall data saved on ${d}`, hi: `वर्षा डेटा ${d} को सहेजा गया` }),
   weatherUnavailable: { en: "Weather forecast unavailable right now", hi: "मौसम पूर्वानुमान अभी उपलब्ध नहीं है" },
+  weatherLoading: { en: "Loading the 7-day forecast…", hi: "7 दिन का पूर्वानुमान लोड हो रहा है…" },
+  weatherRetryHint: { en: "If the server was asleep, it can take about a minute to wake up. Try again.", hi: "सर्वर सोया हो तो जागने में लगभग एक मिनट लग सकता है। फिर कोशिश करें।" },
+  dayCol: { en: "Day", hi: "दिन" },
+  rainCol: { en: "Rain", hi: "बारिश" },
+  tempCol: { en: "High / low", hi: "अधिकतम / न्यूनतम" },
+  noRain: { en: "Dry", hi: "सूखा" },
+  mandiEmpty: { en: "No mandi prices for this crop yet.", hi: "इस फसल के मंडी भाव अभी उपलब्ध नहीं हैं।" },
+  perQuintal: { en: " per quintal", hi: " प्रति क्विंटल" },
   weatherCreditOpenMeteo: { en: "Forecast: Open-Meteo", hi: "पूर्वानुमान: Open-Meteo" },
   weatherCreditMetNo: { en: "Forecast based on data from MET Norway", hi: "पूर्वानुमान MET Norway के डेटा पर आधारित" },
   modelCaveat: { en: "Trained on clear leaf photos; field results may vary.", hi: "साफ़ पत्ती की फ़ोटो पर प्रशिक्षित; खेत में नतीजे अलग हो सकते हैं।" },
@@ -98,9 +111,17 @@ function fmtDay(iso) {
   return `${d}/${m}/${y}`;
 }
 
-const trendMark = { up: "▲", down: "▼", flat: "—" };
-const trendColor = { up: "#2f7d4f", down: "#b23b3b", flat: "#8a7f6b" };
-const levelColor = { high: "#b23b3b", medium: "#c98a2b", low: "#2f7d4f" };
+const TREND_MARK = { up: "▲", down: "▼", flat: "—" };
+const TREND_LABEL = {
+  up:   { en: "Rising", hi: "बढ़ रहा" },
+  down: { en: "Falling", hi: "घट रहा" },
+  flat: { en: "Steady", hi: "स्थिर" },
+};
+const LEVEL_LABEL = {
+  high:   { en: "High", hi: "अधिक" },
+  medium: { en: "Medium", hi: "मध्यम" },
+  low:    { en: "Low", hi: "कम" },
+};
 const MODULES = ["weather", "sowing", "advisory", "mandi", "pest", "disease"];
 const MODULE_ICON = { weather: "🌦️", sowing: "🌱", advisory: "🧭", mandi: "💰", pest: "🐛", disease: "🔬" };
 
@@ -110,7 +131,6 @@ const ADVISORY_STATUS_LABEL = {
   switch: { en: "Switch crop", hi: "फसल बदलें" },
 };
 const ADVISORY_STATUS_ICON = { sow: "✅", wait: "⏳", switch: "🔁" };
-const ADVISORY_STATUS_COLOR = { sow: "#2f7d4f", wait: "#c98a2b", switch: "#b23b3b" };
 // Verdict for a past season's window (current_season: false): stated as that
 // window's result, not as something to do now, in a neutral colour.
 const ADVISORY_PAST_VERDICT = {
@@ -118,14 +138,65 @@ const ADVISORY_PAST_VERDICT = {
   wait:   { en: "Wait", hi: "प्रतीक्षा" },
   switch: { en: "Switch crop", hi: "फसल बदलें" },
 };
-const ADVISORY_PAST_COLOR = "#8a7f6b";
+
+// Theme: "auto" follows the phone's setting. Stored in localStorage; the
+// inline script in index.html applies it before first paint.
+const THEMES = ["auto", "light", "dark"];
+const THEME_LABEL = {
+  auto:  { en: "Auto", hi: "स्वतः" },
+  light: { en: "Light", hi: "हल्का" },
+  dark:  { en: "Dark", hi: "गहरा" },
+};
+const THEME_ICON = { auto: "◐", light: "☀", dark: "☾" };
+const THEME_KEY = "ks-theme";
+
+function readTheme() {
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    return THEMES.includes(v) ? v : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+function Skeleton({ lines = 3, head = false }) {
+  return (
+    <div aria-hidden="true">
+      {head && <span className="ks-skel ks-skel-head" />}
+      {Array.from({ length: lines }, (_, i) => (
+        <span key={i} className="ks-skel" style={{ width: `${92 - (i % 3) * 14}%` }} />
+      ))}
+    </div>
+  );
+}
+
+function Note({ children, icon = "⚠️" }) {
+  return (
+    <div className="ks-note">
+      <span aria-hidden="true">{icon}</span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function EmptyState({ icon, text, action }) {
+  return (
+    <div className="ks-empty">
+      <div className="ks-empty-icon" aria-hidden="true">{icon}</div>
+      <p className="ks-empty-text">{text}</p>
+      {action}
+    </div>
+  );
+}
 
 export default function KisanDashboard() {
   const [lang, setLang] = useState("hi");
+  const [theme, setTheme] = useState(readTheme);
   const [crop, setCrop] = useState("paddy");
   const [tab, setTab] = useState("weather");
   const [weather, setWeather] = useState(null); // null while loading
-  const [mandi, setMandi] = useState(FALLBACK_MANDI);
+  const [mandi, setMandi] = useState(null); // null while loading
+  const [mandiFallback, setMandiFallback] = useState(false);
   const [online, setOnline] = useState(false);
   const [pred, setPred] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -136,12 +207,21 @@ export default function KisanDashboard() {
   const fileRef = useRef();
   const t = (o) => (o ? o[lang] : "");
 
-  useEffect(() => {
+  function loadWeather() {
+    setWeather(null);
     fetch(`${API_BASE}/weather`)
       .then(r => { if (!r.ok) throw new Error("weather fetch failed"); return r.json(); })
       .then(d => { setWeather(d); setOnline(true); })
       .catch(() => setWeather(WEATHER_UNAVAILABLE));
-    fetch(`${API_BASE}/mandi`).then(r => r.json()).then(setMandi).catch(() => {});
+  }
+
+  useEffect(() => {
+    loadWeather();
+    // If /mandi fails the bundled sample prices are shown, labelled as sample.
+    fetch(`${API_BASE}/mandi`)
+      .then(r => { if (!r.ok) throw new Error("mandi fetch failed"); return r.json(); })
+      .then(setMandi)
+      .catch(() => { setMandi(FALLBACK_MANDI); setMandiFallback(true); });
     // Where mandi/rainfall data came from (live/snapshot/sample). On failure
     // dataStatus stays null and no source notes are shown.
     fetch(`${API_BASE}/data-status`)
@@ -149,6 +229,20 @@ export default function KisanDashboard() {
       .then(setDataStatus)
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // Storage blocked (private mode etc.): the choice lasts for this visit only.
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.title = lang === "hi" ? "खेत साथी — Khet Saathi" : "Khet Saathi — खेत साथी";
+  }, [lang]);
 
   useEffect(() => {
     if (tab !== "advisory" || advisory || advisoryLoading) return;
@@ -161,17 +255,19 @@ export default function KisanDashboard() {
       .finally(() => setAdvisoryLoading(false));
   }, [tab, advisory, advisoryLoading]);
 
-  const prices = (mandi[crop] || []);
+  const prices = mandi?.[crop] || [];
   const best = prices.reduce((a, b) => (b.price > (a?.price ?? 0) ? b : a), prices[0]);
 
   const mandiSource = dataStatus?.mandi?.source;
   const mandiNote =
-    mandiSource === "sample" ? T.mandiSample :
+    mandiFallback || mandiSource === "sample" ? T.mandiSample :
     mandiSource === "snapshot" ? T.mandiSnapshot(fmtDay(dataStatus.mandi.as_of)) :
     null;
   // /weather marks its own source. Day cards are shown only for a live
   // forecast; anything else (incl. an older backend's "sample") is unavailable.
   const weatherLive = weather?.source === "live";
+  // Rain bars share one scale per week; at least 10 mm so a drizzle stays small.
+  const rainScale = weatherLive ? Math.max(10, ...weather.days.map(w => w.rain_mm)) : 10;
   const rainNote =
     dataStatus?.rainfall?.source === "snapshot" ? T.rainSnapshot(fmtDay(dataStatus.rainfall.as_of)) : null;
 
@@ -197,75 +293,115 @@ export default function KisanDashboard() {
       setPred({ error: true });
     }
     setBusy(false);
+    e.target.value = ""; // allow re-checking the same photo
   }
 
+  const retryButton = (onClick) => (
+    <button type="button" className="ks-btn" onClick={onClick}>{t(T.retry)}</button>
+  );
+
   return (
-    <div style={S.page}>
-      <style>{css}</style>
-      <header style={S.header}>
+    <div className="ks-app">
+      <header className="ks-header">
         <div>
-          <h1 style={S.h1}>{t(T.title)}</h1>
-          <p style={S.subline}>{t(T.sub)} {online ? "🟢" : "🟡"}</p>
+          <h1 className="ks-title">{t(T.title)}</h1>
+          <p className="ks-district">
+            {t(T.sub)}
+            <span className="ks-dot" data-online={online} role="img"
+              aria-label={t(online ? T.statusOnline : T.statusOffline)} />
+          </p>
         </div>
-        <button style={S.langBtn} onClick={() => setLang(lang === "hi" ? "en" : "hi")}>
-          {lang === "hi" ? "English" : "हिंदी"}
-        </button>
+        <div className="ks-header-actions">
+          <button type="button" className="ks-theme"
+            onClick={() => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length])}
+            aria-label={`${t(T.themeName)}: ${t(THEME_LABEL[theme])}, ${t(T.themeChange)}`}>
+            <span aria-hidden="true">{THEME_ICON[theme]}</span>
+            <span>{t(THEME_LABEL[theme])}</span>
+          </button>
+          <button type="button" className="ks-lang" onClick={() => setLang(lang === "hi" ? "en" : "hi")}
+            lang={lang === "hi" ? "en" : "hi"}>
+            {lang === "hi" ? "English" : "हिंदी"}
+          </button>
+        </div>
       </header>
 
-      {!online && <div style={S.offline}>{t(T.offline)}</div>}
+      {!online && weather && <div className="ks-banner"><Note>{t(T.offline)}</Note></div>}
 
       {/* Crop selector — big tap targets */}
-      <div style={S.cropRow}>
+      <h2 className="ks-label" id="crop-label">{t(T.yourCrop)}</h2>
+      <div className="ks-crops" role="group" aria-labelledby="crop-label">
         {CROPS.map((c) => (
-          <button key={c.id} onClick={() => setCrop(c.id)}
-            style={{ ...S.cropBtn, ...(crop === c.id ? S.cropOn : {}) }}>
-            <span style={S.cropIcon}>{c.icon}</span>
+          <button type="button" key={c.id} className="ks-crop" aria-pressed={crop === c.id}
+            onClick={() => setCrop(c.id)}>
+            <span className="ks-crop-icon" aria-hidden="true">{c.icon}</span>
             <span>{t(c)}</span>
           </button>
         ))}
       </div>
 
       {/* Module tabs — icon-first for low literacy */}
-      <div style={S.tabs}>
+      <div className="ks-tabs" role="group" aria-label={t(T.sections)}>
         {MODULES.map((m) => (
-          <button key={m} onClick={() => setTab(m)}
-            style={{ ...S.tab, ...(tab === m ? S.tabOn : {}) }}>
-            <span style={S.tabIcon}>{MODULE_ICON[m]}</span>
-            <span style={S.tabLabel}>{t(T[m])}</span>
+          <button type="button" key={m} className="ks-tab" aria-pressed={tab === m} onClick={() => setTab(m)}>
+            <span className="ks-tab-icon" aria-hidden="true">{MODULE_ICON[m]}</span>
+            <span>{t(T[m])}</span>
           </button>
         ))}
       </div>
 
-      <div style={S.panel}>
+      <section className="ks-panel" aria-live="polite">
         {tab === "weather" && (
           <div>
-            {weather && !weatherLive && <div style={S.dataNote}>{t(T.weatherUnavailable)}</div>}
+            {!weather && (
+              <>
+                <Skeleton lines={7} />
+                <p className="ks-loading-text">{t(T.weatherLoading)}</p>
+              </>
+            )}
+            {weather && !weatherLive && (
+              <>
+                <Note>{t(T.weatherUnavailable)}</Note>
+                <EmptyState icon="🌦️" text={t(T.weatherRetryHint)} action={retryButton(loadWeather)} />
+              </>
+            )}
             {weatherLive && (
               <>
-                <div style={S.weekRow}>
-                  {weather.days.map((w, i) => (
-                    <div key={i} style={S.day}>
-                      <div style={S.dayName}>{t(w.day)}</div>
-                      <div style={S.temp}>{w.tmax}°</div>
-                      <div style={S.tempMin}>{w.tmin}°</div>
-                      <div style={{ ...S.rain, opacity: w.rain_mm > 0 ? 1 : 0.3 }}>
-                        {w.rain_mm > 0 ? `${w.rain_mm}mm` : "—"}
-                      </div>
-                    </div>
-                  ))}
+                <div className="ks-week-head" aria-hidden="true">
+                  <span>{t(T.dayCol)}</span>
+                  <span>{t(T.rainCol)}</span>
+                  <span className="ks-temps">{t(T.tempCol)}</span>
                 </div>
+                <ul className="ks-week">
+                  {weather.days.map((w, i) => (
+                    <li key={i} className="ks-day">
+                      <span className="ks-day-name">{t(w.day)}</span>
+                      <span className="ks-rain">
+                        <span className="ks-rain-track" aria-hidden="true">
+                          <span className="ks-rain-fill" style={{ display: "block", width: `${Math.min(100, (w.rain_mm / rainScale) * 100)}%` }} />
+                        </span>
+                        <span className="ks-rain-mm" data-dry={!(w.rain_mm > 0)}>
+                          {w.rain_mm > 0 ? `${w.rain_mm} mm` : t(T.noRain)}
+                        </span>
+                      </span>
+                      <span className="ks-temps">
+                        <span className="ks-tmax">{w.tmax}°</span>
+                        <span className="ks-tmin"> / {w.tmin}°</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
                 {weather.provider === "met-no" ? (
                   // MET Norway data is CC BY 4.0: credit plus a link to the licence.
-                  <p style={S.caveat}>
-                    <a href="https://www.met.no/en" target="_blank" rel="noopener noreferrer" style={S.creditLink}>{t(T.weatherCreditMetNo)}</a>
+                  <p className="ks-credit">
+                    <a href="https://www.met.no/en" target="_blank" rel="noopener noreferrer">{t(T.weatherCreditMetNo)}</a>
                     {" ("}
-                    <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" style={S.creditLink}>CC BY 4.0</a>
+                    <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>
                     {")"}
                   </p>
                 ) : (
                   // "open-meteo", or no provider field (older backend: Open-Meteo only).
-                  <p style={S.caveat}>
-                    <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer" style={S.creditLink}>{t(T.weatherCreditOpenMeteo)}</a>
+                  <p className="ks-credit">
+                    <a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">{t(T.weatherCreditOpenMeteo)}</a>
                   </p>
                 )}
               </>
@@ -275,46 +411,45 @@ export default function KisanDashboard() {
 
         {tab === "sowing" && (
           <div>
-            <div style={S.kv}><span style={S.k}>{t(T.window)}</span><span style={S.v}>{t(SOWING[crop].window)}</span></div>
-            <div style={S.kv}><span style={S.k}>{t(T.soil)}</span><span style={S.v}>{t(SOWING[crop].soil)}</span></div>
-            <p style={S.tip}>{t(SOWING[crop].tip)}</p>
+            <div className="ks-kv"><span className="ks-k">{t(T.window)}</span><span className="ks-v">{t(SOWING[crop].window)}</span></div>
+            <div className="ks-kv"><span className="ks-k">{t(T.soil)}</span><span className="ks-v">{t(SOWING[crop].soil)}</span></div>
+            <p className="ks-tip">{t(SOWING[crop].tip)}</p>
           </div>
         )}
 
         {tab === "advisory" && (
-          <div style={S.advisoryBox}>
-            {advisoryLoading && <p style={S.analyzing}>{t(T.advisoryLoading)}</p>}
+          <div>
+            {advisoryLoading && (
+              <>
+                <Skeleton head lines={4} />
+                <p className="ks-loading-text">{t(T.advisoryLoading)}</p>
+              </>
+            )}
 
             {!advisoryLoading && advisoryError && (
-              <div>
-                <p style={S.err}>{t(T.advisoryError)}</p>
-                <button style={S.retryBtn} onClick={() => { setAdvisory(null); setAdvisoryError(false); }}>
-                  {t(T.retry)}
-                </button>
-              </div>
+              <EmptyState icon="🧭" text={t(T.advisoryError)}
+                action={retryButton(() => { setAdvisory(null); setAdvisoryError(false); })} />
             )}
 
             {!advisoryLoading && !advisoryError && advisory && (
               <div>
-                <div style={S.advisoryCrop}>{t(T.paddyAdvice)}</div>
+                <p className="ks-advice-for">{t(T.paddyAdvice)}</p>
                 {advisory.current_season === false ? (
                   <>
-                    <div style={{ ...S.advisoryHead, color: ADVISORY_PAST_COLOR }}>
+                    <p className="ks-verdict" data-status="past">
                       {t(T.pastResult(advisory.season, ADVISORY_PAST_VERDICT[advisory.status]))}
-                    </div>
-                    <div style={S.dataNote}>{t(T.referenceOnly)}</div>
+                    </p>
+                    <Note icon="ℹ️">{t(T.referenceOnly)}</Note>
                   </>
                 ) : (
-                  <div style={{ ...S.advisoryHead, color: ADVISORY_STATUS_COLOR[advisory.status] }}>
-                    <span style={S.advisoryIcon}>{ADVISORY_STATUS_ICON[advisory.status]}</span>
+                  <p className="ks-verdict" data-status={advisory.status}>
+                    <span aria-hidden="true">{ADVISORY_STATUS_ICON[advisory.status]}</span>
                     {t(ADVISORY_STATUS_LABEL[advisory.status])}
-                  </div>
+                  </p>
                 )}
-                <p style={S.advisoryReasoning}>{t(advisory.reasoning)}</p>
-                {advisory.note && (
-                  <p style={S.lowConf}>⚠️ {t(advisory.note)}</p>
-                )}
-                {rainNote && <div style={S.dataNote}>{t(rainNote)}</div>}
+                <p className="ks-reasoning">{t(advisory.reasoning)}</p>
+                {advisory.note && <Note>{t(advisory.note)}</Note>}
+                {rainNote && <Note icon="ℹ️">{t(rainNote)}</Note>}
               </div>
             )}
           </div>
@@ -322,134 +457,82 @@ export default function KisanDashboard() {
 
         {tab === "mandi" && (
           <div>
-            {mandiNote && <div style={S.dataNote}>{t(mandiNote)}</div>}
+            {!mandi && <Skeleton lines={4} />}
+            {mandi && mandiNote && <Note>{t(mandiNote)}</Note>}
+            {mandi && prices.length === 0 && (
+              <EmptyState icon="💰" text={t(T.mandiEmpty)} />
+            )}
             {prices.map((p, i) => (
-              <div key={i} style={S.priceRow}>
-                <span style={S.mandiName}>{t(p.mandi)}</span>
-                <span style={S.price}>₹{p.price.toLocaleString("en-IN")}</span>
-                <span style={{ ...S.trend, color: trendColor[p.trend] }}>{trendMark[p.trend]}</span>
+              <div key={i} className="ks-price">
+                <span className="ks-price-name">{t(p.mandi)}</span>
+                <span className="ks-price-value">₹{p.price.toLocaleString("en-IN")}</span>
+                <span className="ks-trend" data-trend={p.trend} role="img" aria-label={t(TREND_LABEL[p.trend])}
+                  title={t(TREND_LABEL[p.trend])}>
+                  {TREND_MARK[p.trend]}
+                </span>
               </div>
             ))}
-            {best && <div style={S.bestBox}>{t(T.best)}: <strong>{t(best.mandi)}</strong> · ₹{best.price.toLocaleString("en-IN")}/क्विंटल</div>}
+            {best && (
+              <p className="ks-best">
+                {t(T.best)}: <strong>{t(best.mandi)}</strong>, ₹{best.price.toLocaleString("en-IN")}{t(T.perQuintal)}
+              </p>
+            )}
           </div>
         )}
 
         {tab === "pest" && (
           <div>
             {PESTS[crop].map((p, i) => (
-              <div key={i} style={S.pestRow}>
-                <span style={{ ...S.badge, background: levelColor[p.level] }}>●</span>
-                <div><div style={S.pestName}>{t(p.name)}</div><div style={S.pestNote}>{t(p.note)}</div></div>
+              <div key={i} className="ks-pest">
+                <span className="ks-level" data-level={p.level}>{t(LEVEL_LABEL[p.level])}</span>
+                <div><div className="ks-pest-name">{t(p.name)}</div><div className="ks-pest-note">{t(p.note)}</div></div>
               </div>
             ))}
           </div>
         )}
 
         {tab === "disease" && (
-          <div style={S.diseaseBox}>
+          <div>
             <input ref={fileRef} type="file" accept="image/*" capture="environment"
-              onChange={onFile} style={{ display: "none" }} />
-            <button style={S.uploadBtn} onClick={() => fileRef.current.click()}>
-              📷 {t(T.disease)}
+              onChange={onFile} hidden />
+            <button type="button" className="ks-btn ks-btn-big" onClick={() => fileRef.current.click()} disabled={busy}>
+              <span aria-hidden="true">📷</span> {t(T.disease)}
             </button>
-            <p style={S.uploadHint}>{t(T.uploadHint)}</p>
+            <p className="ks-hint">{t(T.uploadHint)}</p>
 
-            {busy && <p style={S.analyzing}>{t(T.analyzing)}</p>}
+            {busy && (
+              <div className="ks-result">
+                <Skeleton head lines={3} />
+                <p className="ks-loading-text">{t(T.analyzing)}</p>
+              </div>
+            )}
 
-            {predFailed && <div style={S.dataNote}>⚠️ {t(T.predictFailed)}</div>}
+            {predFailed && <div className="ks-result"><Note>{t(T.predictFailed)}</Note></div>}
             {/* wrong_crop / unsupported: a notice, never a disease result */}
-            {predNotice && <div style={S.dataNote}>⚠️ {t(pred.message)}</div>}
+            {predNotice && <div className="ks-result"><Note>{t(pred.message)}</Note></div>}
             {predOk && (
-              <div style={S.result}>
-                <div style={S.resultHead}>
-                  <span style={S.resultCrop}>{t(pred.crop)}</span>
-                  <span style={{ ...S.resultDisease, color: pred.healthy ? "#2f7d4f" : "#b23b3b" }}>
-                    {t(pred.disease)}
-                  </span>
+              <div className="ks-result">
+                <div className="ks-result-head">
+                  <span className="ks-result-crop">{t(pred.crop)}</span>
+                  <span className="ks-result-disease" data-healthy={!!pred.healthy}>{t(pred.disease)}</span>
                 </div>
-                <div style={S.confBar}>
-                  <div style={{ ...S.confFill, width: `${pred.confidence}%`,
-                    background: pred.low_confidence ? "#c98a2b" : "#6b8e23" }} />
+                <div className="ks-conf" aria-hidden="true">
+                  <div className="ks-conf-fill" data-low={!!pred.low_confidence} style={{ width: `${pred.confidence}%` }} />
                 </div>
-                <div style={S.confText}>{pred.confidence}% {t(T.confidence)}</div>
-                <p style={S.resultDesc}>{t(pred.description)}</p>
+                <div className="ks-conf-text">{pred.confidence}% {t(T.confidence)}</div>
+                <p className="ks-result-desc">{t(pred.description)}</p>
                 {!pred.healthy && (
-                  <div style={S.actionBox}>
+                  <div className="ks-action">
                     <strong>{t(T.whatToDo)}:</strong> {t(pred.action)}
                   </div>
                 )}
-                {pred.low_confidence && <p style={S.lowConf}>⚠️ {t(pred.note)}</p>}
-                <p style={S.caveat}>{t(T.modelCaveat)}</p>
+                {pred.low_confidence && <Note>{t(pred.note)}</Note>}
+                <p className="ks-credit">{t(T.modelCaveat)}</p>
               </div>
             )}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
-
-const soil = "#efe7d6", ink = "#2c2419", clay = "#a0522d", line = "#d8ccb4";
-const css = `@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}`;
-const S = {
-  page: { fontFamily: "'Segoe UI', system-ui, sans-serif", background: soil, color: ink, minHeight: "100vh", padding: 16, maxWidth: 640, margin: "0 auto", animation: "rise .4s ease" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: `3px solid ${clay}`, paddingBottom: 10, marginBottom: 12 },
-  // Explicit colour: index.css's global h1 colour turns near-white in dark mode.
-  h1: { fontSize: 24, margin: 0, fontWeight: 800, color: "#3a2e1a" },
-  subline: { margin: "2px 0 0", fontSize: 13, color: "#4a3f2c", fontWeight: 600 },
-  langBtn: { background: ink, color: soil, border: "none", borderRadius: 6, padding: "8px 14px", fontSize: 14, fontWeight: 700, cursor: "pointer" },
-  offline: { background: "#fbf0d5", border: "1px solid #e6cf8f", borderRadius: 8, padding: 8, fontSize: 12, color: "#7a5c1e", marginBottom: 12 },
-  cropRow: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 },
-  cropBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4, border: `1.5px solid ${line}`, background: "#fff", borderRadius: 12, padding: "10px 4px", fontSize: 13, fontWeight: 700, cursor: "pointer", color: ink },
-  cropOn: { background: clay, color: "#fff", borderColor: clay },
-  cropIcon: { fontSize: 24 },
-  tabs: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginBottom: 14 },
-  tab: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3, border: `1px solid ${line}`, background: "#fffdf8", borderRadius: 10, padding: "8px 2px", cursor: "pointer", color: ink },
-  tabOn: { background: "#3a2e1a", color: "#fff", borderColor: "#3a2e1a" },
-  tabIcon: { fontSize: 20 },
-  tabLabel: { fontSize: 10, fontWeight: 700, textAlign: "center", lineHeight: 1.1 },
-  panel: { background: "#fffdf8", border: `1px solid ${line}`, borderRadius: 12, padding: 16, minHeight: 180, boxShadow: "0 1px 3px rgba(80,60,20,.06)" },
-  weekRow: { display: "flex", justifyContent: "space-between", gap: 4 },
-  day: { textAlign: "center", flex: 1 },
-  dayName: { fontSize: 12, fontWeight: 700, color: "#7a6d54" },
-  temp: { fontSize: 17, fontWeight: 800, marginTop: 4 },
-  tempMin: { fontSize: 12, color: "#9a8d72" },
-  rain: { fontSize: 11, color: "#3a6ea5", fontWeight: 700, marginTop: 2 },
-  kv: { display: "flex", justifyContent: "space-between", gap: 10, padding: "8px 0", borderBottom: `1px dashed ${line}` },
-  k: { fontSize: 14, color: "#7a6d54", fontWeight: 600 },
-  v: { fontSize: 14, fontWeight: 700, textAlign: "right" },
-  tip: { fontSize: 14, marginTop: 10, marginBottom: 0, lineHeight: 1.5, color: "#4a3f2c", background: "#f4efe2", padding: 10, borderRadius: 8, borderLeft: `3px solid #6b8e23` },
-  advisoryBox: {},
-  advisoryCrop: { fontSize: 13, fontWeight: 700, color: "#8a7f6b", marginBottom: 6 },
-  advisoryHead: { display: "flex", alignItems: "center", gap: 8, fontSize: 22, fontWeight: 900 },
-  advisoryIcon: { fontSize: 24 },
-  advisoryReasoning: { fontSize: 14, lineHeight: 1.6, marginTop: 12, color: "#4a3f2c" },
-  retryBtn: { marginTop: 10, background: clay, color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" },
-  priceRow: { display: "grid", gridTemplateColumns: "1fr auto auto", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: `1px dashed ${line}` },
-  mandiName: { fontSize: 15, fontWeight: 600 },
-  price: { fontSize: 16, fontWeight: 800 },
-  trend: { fontSize: 14, fontWeight: 800, width: 16, textAlign: "center" },
-  bestBox: { marginTop: 12, background: "#f0f5ec", border: "1px solid #cfe0c2", borderRadius: 8, padding: 10, fontSize: 14, color: "#2f5d38" },
-  pestRow: { display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 0" },
-  badge: { color: "#fff", fontSize: 16, lineHeight: 1 },
-  pestName: { fontSize: 15, fontWeight: 700 },
-  pestNote: { fontSize: 13, color: "#6a5f48", marginTop: 2 },
-  diseaseBox: { textAlign: "center" },
-  uploadBtn: { background: clay, color: "#fff", border: "none", borderRadius: 12, padding: "16px 24px", fontSize: 18, fontWeight: 800, cursor: "pointer", width: "100%" },
-  uploadHint: { fontSize: 13, color: "#7a6d54", marginTop: 8 },
-  analyzing: { fontSize: 15, fontWeight: 700, color: clay },
-  err: { fontSize: 13, color: "#b23b3b" },
-  result: { textAlign: "left", marginTop: 12, background: "#faf6 ", borderRadius: 10 },
-  resultHead: { display: "flex", justifyContent: "space-between", alignItems: "baseline" },
-  resultCrop: { fontSize: 15, fontWeight: 700, color: "#7a6d54" },
-  resultDisease: { fontSize: 19, fontWeight: 800 },
-  confBar: { height: 8, background: "#e8ddc5", borderRadius: 4, marginTop: 10, overflow: "hidden" },
-  confFill: { height: "100%", borderRadius: 4 },
-  confText: { fontSize: 12, color: "#7a6d54", marginTop: 4, fontWeight: 600 },
-  resultDesc: { fontSize: 14, lineHeight: 1.5, marginTop: 10 },
-  actionBox: { background: "#f4efe2", borderLeft: `3px solid #6b8e23`, padding: 10, borderRadius: 8, fontSize: 14, lineHeight: 1.5, marginTop: 8 },
-  lowConf: { fontSize: 13, color: "#c98a2b", marginTop: 8, fontWeight: 600 },
-  dataNote: { background: "#fbf0d5", border: "1px solid #e6cf8f", borderRadius: 8, padding: 8, fontSize: 12, color: "#7a5c1e", margin: "10px 0" },
-  caveat: { fontSize: 11, color: "#9a8d72", marginTop: 10, marginBottom: 0 },
-  creditLink: { color: "inherit" },
-};

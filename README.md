@@ -1,6 +1,7 @@
-# Kisan Dashboard
+# Khet Saathi (खेत साथी)
 
 A bilingual (Hindi/English) crop advisory web app for smallholder farmers in Ranchi district, Jharkhand.
+Formerly called Kisan Dashboard; the repository, folders and URLs keep the original `kisan-dashboard` name.
 FastAPI backend · React frontend · CNN-based crop disease detection · Agmarknet mandi prices (live when run
 locally; see [Known limitations](#known-limitations-of-the-hosted-demo)).
 
@@ -67,7 +68,7 @@ gap requires a locally retrained classifier, not a national one.
 
 ### What this project does differently
 
-| | National platforms | Kisan Dashboard |
+| | National platforms | Khet Saathi |
 |---|---|---|
 | Scope | Pan-India, generic | Ranchi district, block-level |
 | Advisory | Generic weather forecast | Rainfed **sowing-window** decision (sow paddy / switch crop / wait) |

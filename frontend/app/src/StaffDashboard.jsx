@@ -19,11 +19,11 @@ const CROPS = [
 
 const CATEGORY_COLOR = {
   "Large Excess": "#1d5fa8",
-  "Excess": "#2f7d4f",
-  "Normal": "#2f7d4f",
-  "Deficient": "#c98a2b",
-  "Large Deficient": "#b23b3b",
-  "No Rain": "#7a1f1f",
+  "Excess": "#1F6B3E",
+  "Normal": "#1F6B3E",
+  "Deficient": "#7A4E00",
+  "Large Deficient": "#9C2A22",
+  "No Rain": "#6E1C17",
 };
 
 const STATUS_LABEL = {
@@ -31,11 +31,12 @@ const STATUS_LABEL = {
   wait: { en: "WAIT", hi: "प्रतीक्षा" },
   switch: { en: "SWITCH", hi: "बदलें" },
 };
-const STATUS_COLOR = { sow: "#2f7d4f", wait: "#c98a2b", switch: "#b23b3b" };
+// Badge backgrounds behind white text; each meets WCAG AA (≥4.5:1).
+const STATUS_COLOR = { sow: "#1F6B3E", wait: "#7A4E00", switch: "#9C2A22" };
 // current_season: false — a past window's result, shown in a neutral colour.
-const PAST_STATUS_COLOR = "#7d7360";
+const PAST_STATUS_COLOR = "#635B49";
 const TREND_MARK = { up: "▲", down: "▼", flat: "—" };
-const TREND_COLOR = { up: "#2f7d4f", down: "#b23b3b", flat: "#8a7f6b" };
+const TREND_COLOR = { up: "var(--good)", down: "var(--bad)", flat: "var(--muted)" };
 
 function fmtDate(iso) {
   if (!iso) return "—";
@@ -86,11 +87,22 @@ function DataDate({ status }) {
   return <div style={S.footnote}>Data date {d} · डेटा तिथि {d}</div>;
 }
 
+function Loading() {
+  return (
+    <div>
+      <span className="ks-skel" aria-hidden="true" style={{ width: "90%" }} />
+      <span className="ks-skel" aria-hidden="true" style={{ width: "70%" }} />
+      <span className="ks-skel" aria-hidden="true" style={{ width: "80%" }} />
+      <p style={S.loading}>Loading… <span style={S.hiText}>लोड हो रहा है…</span></p>
+    </div>
+  );
+}
+
 function ErrorBox({ onRetry }) {
   return (
     <div style={S.errBox}>
       <span>⚠ Could not load. <span style={S.hiText}>लोड नहीं हो सका।</span></span>
-      <button style={S.retryBtn} onClick={onRetry}>Retry / फिर कोशिश करें</button>
+      <button type="button" style={S.retryBtn} onClick={onRetry}>Retry / फिर कोशिश करें</button>
     </div>
   );
 }
@@ -136,6 +148,8 @@ export default function StaffDashboard() {
       .catch(() => setDataStatus(null));
   }, []);
 
+  useEffect(() => { document.title = "Khet Saathi — District dashboard"; }, []);
+
   // Independent effects — one section's failure never blocks the other.
   useEffect(() => { loadAdvisory(); }, [loadAdvisory]);
   useEffect(() => { loadMandi(); }, [loadMandi]);
@@ -155,14 +169,15 @@ export default function StaffDashboard() {
       <style>{css}</style>
       <header style={S.header}>
         <div>
-          <div style={S.h1}>
-            District Situation Dashboard <span style={S.h1hi}>ज़िला स्थिति डैशबोर्ड</span>
-          </div>
+          <h1 style={S.h1}>
+            District Situation Dashboard <span style={S.h1hi} lang="hi">ज़िला स्थिति डैशबोर्ड</span>
+          </h1>
           <div style={S.sub}>
-            Ranchi District <span style={S.hiText}>राँची ज़िला</span> · ATMA / KVK Staff View
+            Khet Saathi <span lang="hi">खेत साथी</span> · Ranchi District <span lang="hi">राँची ज़िला</span> · ATMA / KVK Staff View
           </div>
         </div>
         <button
+          type="button"
           style={S.refreshBtn}
           onClick={() => { loadAdvisory(); loadMandi(); loadDataStatus(); }}
         >
@@ -177,7 +192,7 @@ export default function StaffDashboard() {
             Rainfall Status <span style={S.h2hi}>वर्षा स्थिति</span>
           </h2>
 
-          {advisoryLoading && <p style={S.loading}>Loading… <span style={S.hiText}>लोड हो रहा है…</span></p>}
+          {advisoryLoading && <Loading />}
           {!advisoryLoading && advisoryError && <ErrorBox onRetry={loadAdvisory} />}
 
           {!advisoryLoading && !advisoryError && advisory && (
@@ -223,7 +238,7 @@ export default function StaffDashboard() {
                       <span
                         style={{
                           ...S.badge,
-                          background: CATEGORY_COLOR[advisory.category] || "#555",
+                          background: CATEGORY_COLOR[advisory.category] || "#635B49",
                         }}
                       >
                         {advisory.category}
@@ -243,7 +258,7 @@ export default function StaffDashboard() {
             Sowing Recommendation <span style={S.h2hi}>बुआई सलाह</span>
           </h2>
 
-          {advisoryLoading && <p style={S.loading}>Loading… <span style={S.hiText}>लोड हो रहा है…</span></p>}
+          {advisoryLoading && <Loading />}
           {!advisoryLoading && advisoryError && <ErrorBox onRetry={loadAdvisory} />}
 
           {!advisoryLoading && !advisoryError && advisory && (
@@ -292,7 +307,7 @@ export default function StaffDashboard() {
           Mandi Prices — All Crops <span style={S.h2hi}>मंडी भाव — सभी फसलें</span>
         </h2>
 
-        {mandiLoading && <p style={S.loading}>Loading… <span style={S.hiText}>लोड हो रहा है…</span></p>}
+        {mandiLoading && <Loading />}
         {!mandiLoading && mandiError && <ErrorBox onRetry={loadMandi} />}
 
         {!mandiLoading && !mandiError && mandi && (
@@ -323,7 +338,7 @@ export default function StaffDashboard() {
                       )}
                     </td>
                     <td style={S.tdNum}>{best ? `₹${best.price.toLocaleString("en-IN")}` : "—"}</td>
-                    <td style={{ ...S.tdNum, color: best ? TREND_COLOR[best.trend] : "#999" }}>
+                    <td style={{ ...S.tdNum, color: best ? TREND_COLOR[best.trend] : "var(--muted)" }}>
                       {best ? TREND_MARK[best.trend] : "—"}
                     </td>
                   </tr>
@@ -338,48 +353,52 @@ export default function StaffDashboard() {
   );
 }
 
-const ink = "#1a2233", line = "#d7dbe3", panelBg = "#ffffff", pageBg = "#eef0f4";
+// Same palette as the farmer app: CSS variables from index.css (with dark mode).
+const ink = "var(--ink)", line = "var(--line)", panelBg = "var(--surface)", pageBg = "var(--bg)";
 const css = `
   .sd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
   @media (max-width: 760px) { .sd-grid { grid-template-columns: 1fr; } }
-  .sd-mandi-table tbody tr:nth-child(even) { background: #f6f7fa; }
-  .sd-mandi-table tbody tr:hover { background: #eef2fb; }
+  .sd-mandi-table tbody tr:nth-child(even) { background: var(--bg); }
+  .sd-mandi-table tbody tr:hover { background: var(--chip); }
 `;
 
 const S = {
   page: {
-    fontFamily: "'Segoe UI', system-ui, sans-serif",
+    fontFamily: "var(--font)",
     background: pageBg,
     color: ink,
     minHeight: "100vh",
-    padding: "18px 20px 40px",
+    padding: "16px 14px 40px",
     maxWidth: 1080,
     margin: "0 auto",
-    lineHeight: 1.35,
-    letterSpacing: "normal",
-    fontSize: 13,
+    lineHeight: 1.45,
+    fontSize: 14,
   },
   header: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    background: ink,
-    color: "#fff",
-    borderRadius: 8,
+    gap: 12,
+    flexWrap: "wrap",
+    background: "var(--primary)",
+    color: "var(--on-primary)",
+    borderRadius: 12,
+    borderBottom: "4px solid var(--accent)",
     padding: "12px 16px",
     marginBottom: 14,
   },
-  h1: { fontSize: 18, fontWeight: 800, margin: 0 },
-  h1hi: { fontSize: 14, fontWeight: 500, color: "#c9cfdc", marginLeft: 6 },
-  sub: { fontSize: 12, color: "#aab0c0", marginTop: 3, fontWeight: 600 },
-  hiText: { color: "#6b7285", fontWeight: 500 },
+  h1: { fontSize: 19, fontWeight: 700, margin: 0, lineHeight: 1.3 },
+  h1hi: { fontSize: 15, fontWeight: 400, marginLeft: 6 },
+  sub: { fontSize: 13, marginTop: 3, fontWeight: 400 },
+  hiText: { color: "var(--muted)", fontWeight: 400 },
   refreshBtn: {
-    background: "#2c3650",
-    color: "#fff",
-    border: "1px solid #445071",
-    borderRadius: 6,
-    padding: "7px 12px",
-    fontSize: 12,
+    minHeight: 48,
+    background: "transparent",
+    color: "inherit",
+    border: "2px solid currentColor",
+    borderRadius: 10,
+    padding: "0 14px",
+    fontSize: 13,
     fontWeight: 700,
     cursor: "pointer",
     whiteSpace: "nowrap",
@@ -387,45 +406,43 @@ const S = {
   panel: {
     background: panelBg,
     border: `1px solid ${line}`,
-    borderRadius: 8,
+    borderRadius: 16,
     padding: "12px 14px",
   },
   panelWide: {
     background: panelBg,
     border: `1px solid ${line}`,
-    borderRadius: 8,
+    borderRadius: 16,
     padding: "12px 14px",
   },
   h2: {
-    fontSize: 13,
-    fontWeight: 800,
-    textTransform: "uppercase",
-    letterSpacing: "0.4px",
+    fontSize: 16,
+    fontWeight: 700,
     margin: "0 0 10px",
     paddingBottom: 8,
-    borderBottom: `2px solid ${ink}`,
-    color: ink,
+    borderBottom: "2px solid var(--accent)",
+    color: "var(--primary)",
   },
-  h2hi: { fontSize: 12, fontWeight: 500, color: "#6b7285", textTransform: "none", letterSpacing: 0, marginLeft: 4 },
-  loading: { fontSize: 12, color: "#6b7285", fontWeight: 600, margin: "6px 0" },
-  errBox: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "#fbeaea", border: "1px solid #eec2c2", borderRadius: 6, padding: "8px 10px", fontSize: 12, color: "#8a2c2c" },
-  retryBtn: { background: "#b23b3b", color: "#fff", border: "none", borderRadius: 5, padding: "5px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" },
-  warnNote: { fontSize: 11, background: "#fbf0d5", border: "1px solid #e6cf8f", borderRadius: 6, padding: "6px 8px", marginBottom: 10, color: "#7a5c1e", lineHeight: 1.4 },
+  h2hi: { fontSize: 13, fontWeight: 400, color: "var(--muted)", marginLeft: 4 },
+  loading: { fontSize: 13, color: "var(--muted)", fontWeight: 700, margin: "6px 0" },
+  errBox: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, background: "var(--surface)", border: "2px solid var(--bad)", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "var(--bad)", fontWeight: 700 },
+  retryBtn: { minHeight: 48, background: "var(--primary)", color: "var(--on-primary)", border: "none", borderRadius: 10, padding: "0 14px", fontSize: 13, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" },
+  warnNote: { fontSize: 13, fontWeight: 700, background: "var(--note-bg)", border: "1px solid var(--note-line)", borderRadius: 8, padding: "8px 10px", marginBottom: 10, color: "var(--note-ink)", lineHeight: 1.45 },
   kvTable: { width: "100%", borderCollapse: "collapse" },
-  kCell: { fontSize: 12, color: "#6b7285", fontWeight: 600, padding: "6px 8px 6px 0", borderBottom: `1px dashed ${line}`, whiteSpace: "nowrap", verticalAlign: "top" },
-  vCell: { fontSize: 12, fontWeight: 700, padding: "6px 0", borderBottom: `1px dashed ${line}`, textAlign: "right" },
+  kCell: { fontSize: 13, color: "var(--muted)", fontWeight: 700, padding: "6px 8px 6px 0", borderBottom: `1px dashed ${line}`, whiteSpace: "nowrap", verticalAlign: "top" },
+  vCell: { fontSize: 13, fontWeight: 700, padding: "6px 0", borderBottom: `1px dashed ${line}`, textAlign: "right" },
   vCellNum: { fontSize: 13, fontWeight: 800, padding: "6px 0", borderBottom: `1px dashed ${line}`, textAlign: "right", fontVariantNumeric: "tabular-nums" },
-  dim: { fontSize: 11, fontWeight: 500, color: "#8a90a3" },
+  dim: { fontSize: 12, fontWeight: 400, color: "var(--muted)" },
   badge: { display: "inline-block", color: "#fff", fontSize: 11, fontWeight: 800, padding: "3px 8px", borderRadius: 4 },
-  footnote: { fontSize: 10, color: "#9aa0b0", marginTop: 8, textAlign: "right" },
-  cropLabel: { fontSize: 12, fontWeight: 700, color: "#4a5164", marginBottom: 6 },
+  footnote: { fontSize: 12, color: "var(--muted)", marginTop: 8, textAlign: "right" },
+  cropLabel: { fontSize: 13, fontWeight: 700, color: "var(--muted)", marginBottom: 6 },
   statusBadge: { display: "inline-block", color: "#fff", fontSize: 13, fontWeight: 900, padding: "5px 12px", borderRadius: 5, marginBottom: 10, letterSpacing: "0.5px" },
-  reasonEn: { fontSize: 12, lineHeight: 1.5, margin: "0 0 6px", color: "#2a3142" },
-  reasonHi: { fontSize: 12, lineHeight: 1.5, margin: "0 0 8px", color: "#6b7285" },
-  meta: { fontSize: 11, color: "#4a5164", background: "#f4f5f8", borderLeft: `3px solid ${ink}`, padding: "5px 8px", borderRadius: 4, marginTop: 6 },
+  reasonEn: { fontSize: 14, lineHeight: 1.5, margin: "0 0 6px", color: "var(--ink)" },
+  reasonHi: { fontSize: 14, lineHeight: 1.65, margin: "0 0 8px", color: "var(--muted)" },
+  meta: { fontSize: 13, color: "var(--ink)", background: "var(--chip)", borderLeft: "3px solid var(--primary)", padding: "5px 8px", borderRadius: 4, marginTop: 6 },
   mandiTable: { width: "100%", borderCollapse: "collapse", fontSize: 12 },
-  th: { textAlign: "left", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.3px", color: "#6b7285", padding: "6px 8px", borderBottom: `2px solid ${ink}` },
-  thNum: { textAlign: "right", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.3px", color: "#6b7285", padding: "6px 8px", borderBottom: `2px solid ${ink}` },
+  th: { textAlign: "left", fontSize: 13, fontWeight: 700, color: "var(--muted)", padding: "6px 8px", borderBottom: `2px solid ${ink}` },
+  thNum: { textAlign: "right", fontSize: 13, fontWeight: 700, color: "var(--muted)", padding: "6px 8px", borderBottom: `2px solid ${ink}` },
   td: { padding: "7px 8px", borderBottom: `1px solid ${line}`, fontWeight: 600 },
   tdNum: { padding: "7px 8px", borderBottom: `1px solid ${line}`, fontWeight: 800, textAlign: "right", fontVariantNumeric: "tabular-nums" },
 };
